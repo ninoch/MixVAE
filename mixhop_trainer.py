@@ -232,6 +232,58 @@ def create_dim_inds(dim_list):
         offset += dim_list[i]
     return np.array(z1_inds), np.array(z2_inds)
 
+def build_model(sparse_adj, x, is_training, kernel_regularizer, num_x_entries):
+    model = mixhop_model.MixHopModel(
+        sparse_adj, x, is_training, kernel_regularizer)
+    if FLAGS.architecture:
+        model.load_architecture_from_file(FLAGS.architecture)
+    else:
+        model.add_layer('mixhop_model', 'sparse_dropout', FLAGS.input_dropout,
+                        num_x_entries, pass_is_training=True)
+        model.add_layer('tf', 'sparse_tensor_to_dense')
+        model.add_layer('tf.nn', 'l2_normalize', axis=1)
+
+        power_parser = AdjacencyPowersParser()
+        layer_dims = list(map(int, FLAGS.hidden_dims_csv.split(',')))
+
+        # --------- Our code --------- #
+        layer_dims.append(2 * FLAGS.num_nodes)
+        # layer_dims.append(power_parser.output_capacity(dataset.ally.shape[1])) #TODO: Adapt/Remove to our problem setting
+        # --------- Our code -------- #
+
+        for j, dim in enumerate(layer_dims):
+            if j != 0:
+                model.add_layer('tf.layers', 'dropout', FLAGS.layer_dropout,
+                                pass_training=True)
+            capacities = power_parser.divide_capacity(j, dim)
+            model.add_layer('self', 'mixhop_layer', power_parser.powers(), capacities,
+                            layer_id=j, pass_kernel_regularizer=True)
+
+            if j != len(layer_dims) - 1:
+                model.add_layer('tf.contrib.layers', 'batch_norm')
+                model.add_layer('tf.nn', FLAGS.nonlinearity)
+
+        # model.add_layer('mixhop_model', 'psum_output_layer', dataset.ally.shape[1])
+
+        # --------- Our Code ----------#
+        model.add_layer('mixhop_model', 'reorder', create_dim_inds(
+            power_parser.divide_capacity(len(layer_dims) - 2, layer_dims[-2])))  # TODO: Verify the capacity
+        model.add_layer('mixhop_model', 'decoder_layer')
+        # -------- Our Code ----------#
+
+    net = model.activations[-1]  # TODO: check this output
+
+    ### TRAINING.
+    sliced_output = net  # tf.gather(net, ph_indices)
+
+
+    # ------------------ Our code ----------------- #
+    A1 = sliced_output[:, :net.shape[1] / 2]
+    A1 = tf.reshape(A1, [A1.shape[0], A1.shape[0]])
+    A2 = sliced_output[:, net.shape[1] / 2:]
+    A2 = tf.reshape(A2, [A2.shape[0], A2.shape[0]])
+    return A1, A2, model
+
 def main(unused_argv):
   encoded_params = GetEncodedParams()
   output_results_file = os.path.join(
@@ -247,68 +299,23 @@ def main(unused_argv):
   dataset = mixhop_dataset.ReadDataset(FLAGS.dataset_dir, FLAGS.dataset_name)
 
   ### MODEL REQUIREMENTS (Placeholders, adjacency tensor, regularizers)
-  x = dataset.sparse_allx_tensor()
-  y = tf.placeholder(tf.float32, [None, dataset.ally.shape[1]], name='y')
+  x = dataset.sparse_allx_tensor() #TODO: check it to be placeholder
+  y1 = tf.placeholder(tf.float32, [None, dataset.ally.shape[1]], name='y1') #TODO: check the shape of placeholder
+  y2 = tf.placeholder(tf.float32, [None, dataset.ally.shape[1]], name='y2') #TODO: check the shape of placeholder
   # TODO: load y1, y2 here for as edges in A1, A2
 
-  ph_indices = tf.placeholder(tf.int64, [None])
+  # ph_indices = tf.placeholder(tf.int64, [None])
   is_training = tf.placeholder_with_default(True, [], name='is_training')
 
   pows_parser = AdjacencyPowersParser()  # Parses flag --adj_pows
   num_x_entries = dataset.x_indices.shape[0]
 
-  sparse_adj = dataset.sparse_adj_tensor()
+  sparse_adj = dataset.sparse_adj_tensor() #TODO: check it to be placeholder
   kernel_regularizer = CombinedRegularizer(FLAGS.l2reg, FLAGS.l2reg) #  keras_regularizers.l2(FLAGS.l2reg)
   
   ### BUILD MODEL
-  model = mixhop_model.MixHopModel(
-      sparse_adj, x, is_training, kernel_regularizer)
-  if FLAGS.architecture:
-    model.load_architecture_from_file(FLAGS.architecture)
-  else:
-    model.add_layer('mixhop_model', 'sparse_dropout', FLAGS.input_dropout,
-                    num_x_entries, pass_is_training=True)
-    model.add_layer('tf', 'sparse_tensor_to_dense')
-    model.add_layer('tf.nn', 'l2_normalize', axis=1)
-   
-    power_parser = AdjacencyPowersParser()
-    layer_dims = list(map(int, FLAGS.hidden_dims_csv.split(',')))
-
-    #--------- Our code --------- #
-    layer_dims.append(2 * FLAGS.num_nodes)
-    # layer_dims.append(power_parser.output_capacity(dataset.ally.shape[1])) #TODO: Adapt/Remove to our problem setting
-    #--------- Our code -------- #
-
-    for j, dim in enumerate(layer_dims):
-      if j != 0:
-        model.add_layer('tf.layers', 'dropout', FLAGS.layer_dropout,
-                        pass_training=True)
-      capacities = power_parser.divide_capacity(j, dim)
-      model.add_layer('self', 'mixhop_layer', power_parser.powers(), capacities,
-                      layer_id=j, pass_kernel_regularizer=True)
-
-      if j != len(layer_dims) - 1:
-        model.add_layer('tf.contrib.layers', 'batch_norm')
-        model.add_layer('tf.nn', FLAGS.nonlinearity)
-
-    # model.add_layer('mixhop_model', 'psum_output_layer', dataset.ally.shape[1])
-
-    #--------- Our Code ----------#
-    model.add_layer('mixhop_model', 'reorder', create_dim_inds(power_parser.divide_capacity(len(layer_dims)-2, layer_dims[-2]))) #TODO: Verify the capacity
-    model.add_layer('mixhop_model', 'decoder_layer')
-    # -------- Our Code ----------#
-
-  net = model.activations[-1] #TODO: check this output
-
-  ### TRAINING.
-  sliced_output = tf.gather(net, ph_indices)
+  A1, A2, model = build_model(sparse_adj, x, is_training, kernel_regularizer, num_x_entries)
   learn_rate = tf.placeholder(tf.float32, [], 'learn_rate')
-
-  # ------------------ Our code ----------------- #
-  A1 = sliced_output[:, :net.shape[1]/2]
-  A1 = tf.reshape(A1, [A1.shape[0], A1.shape[0]])
-  A2 = sliced_output[:, net.shape[1]/2:]
-  A2 = tf.reshape(A1, [A2.shape[0], A2.shape[0]])
   label_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y1, logits=A1))
   label_loss += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y2, logits=A2))
   # ---------------- Our code ------------------ #
@@ -329,19 +336,22 @@ def main(unused_argv):
   # Now that the graph is frozen
   sess = tf.Session()
   sess.run(tf.global_variables_initializer())
- 
+
+
+ ## TODO: change the training loop structure
   ### PREPARE FOR TRAINING
   # Get indices of {train, validate, test} nodes.
-  num_train_nodes = None
-  if FLAGS.num_train_nodes > 0:
-    num_train_nodes = FLAGS.num_train_nodes
-  else:
-    num_train_nodes = -1 * FLAGS.num_train_nodes * dataset.ally.shape[1]
+  # num_train_nodes = None
+  # if FLAGS.num_train_nodes > 0:
+  #   num_train_nodes = FLAGS.num_train_nodes
+  # else:
+  #   num_train_nodes = -1 * FLAGS.num_train_nodes * dataset.ally.shape[1]
+  #
+  # train_indices, validate_indices, test_indices = dataset.get_partition_indices(
+  #     num_train_nodes, FLAGS.num_validate_nodes)
 
-  train_indices, validate_indices, test_indices = dataset.get_partition_indices(
-      num_train_nodes, FLAGS.num_validate_nodes)
+  # train_indices = range(num_train_nodes)
 
-  train_indices = range(num_train_nodes)
   feed_dict = {y: dataset.ally[train_indices]}
   dataset.populate_feed_dict(feed_dict)
   LAST_STEP = collections.Counter()
@@ -350,13 +360,14 @@ def main(unused_argv):
   # Step function makes a single update, prints accuracies, and invokes
   # accuracy_monitor to keep track of test accuracy and parameters @ best
   # validation accuracy
-  def step(lr=None, columns=None):
+  def step(adj, x, y1, y2, lr=None, columns=None):
     if lr is not None:
       feed_dict[learn_rate] = lr
     i = LAST_STEP['step']
     LAST_STEP['step'] += 1
     feed_dict[is_training] = True
-    feed_dict[ph_indices] = train_indices
+    feed_dict[ph_indices] = train_indices # TODO: change to the next batch
+
     # Train step
     train_preds, loss_value, _ = sess.run((sliced_output, label_loss, train_op), feed_dict)
     
@@ -367,11 +378,11 @@ def main(unused_argv):
         train_preds.argmax(axis=1) == dataset.ally[train_indices].argmax(axis=1))
     
     feed_dict[is_training] = False
-    feed_dict[ph_indices] = test_indices
+    feed_dict[ph_indices] = test_indices # TODO: change to get the next batch
     test_preds = sess.run(sliced_output, feed_dict)
     test_accuracy = numpy.mean(
         test_preds.argmax(axis=1) == dataset.ally[test_indices].argmax(axis=1))
-    feed_dict[ph_indices] = validate_indices
+    feed_dict[ph_indices] = validate_indices  # TODO: change to the next batch
     validate_preds = sess.run(sliced_output, feed_dict)
     validate_accuracy = numpy.mean(
         validate_preds.argmax(axis=1) == dataset.ally[validate_indices].argmax(axis=1))
