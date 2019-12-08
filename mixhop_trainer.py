@@ -16,6 +16,7 @@ from tensorflow.python.keras import regularizers as keras_regularizers
 # Project imports.
 import mixhop_dataset
 import mixhop_model
+import numpy as np
 
 # IO Flags.
 flags.DEFINE_string('dataset_dir',
@@ -83,7 +84,7 @@ flags.DEFINE_float('lr_decrement_ratio_of_initial', 0.01,
                    'this value * --learn_rate.')
 flags.DEFINE_float('lr_decrement_every', 40,
                    'Learning rate will be decremented every this many steps.')
-
+flags.DEFINE_integer('num_nodes', 20 , 'Number of nodes in the training graph')
 FLAGS = flags.FLAGS
 
 
@@ -220,6 +221,16 @@ class CombinedRegularizer(keras_regularizers.Regularizer):
   def __call__(self, x):
     return self.lasso(x) + self.l2(x)
 
+def create_dim_inds(dim_list):
+    z1_inds = []
+    z2_inds = []
+    offset = 0
+    for i in range(len(dim_list)):
+        for j in range(dim_list[i]/2):
+            z1_inds.append(offset + j)
+            z2_inds.append(offset + dim_list[i]/2 + j)
+        offset += dim_list[i]
+    return np.array(z1_inds), np.array(z2_inds)
 
 def main(unused_argv):
   encoded_params = GetEncodedParams()
@@ -238,6 +249,8 @@ def main(unused_argv):
   ### MODEL REQUIREMENTS (Placeholders, adjacency tensor, regularizers)
   x = dataset.sparse_allx_tensor()
   y = tf.placeholder(tf.float32, [None, dataset.ally.shape[1]], name='y')
+  # TODO: load y1, y2 here for as edges in A1, A2
+
   ph_indices = tf.placeholder(tf.int64, [None])
   is_training = tf.placeholder_with_default(True, [], name='is_training')
 
@@ -260,7 +273,12 @@ def main(unused_argv):
    
     power_parser = AdjacencyPowersParser()
     layer_dims = list(map(int, FLAGS.hidden_dims_csv.split(',')))
-    layer_dims.append(power_parser.output_capacity(dataset.ally.shape[1]))
+
+    #--------- Our code --------- #
+    layer_dims.append(2 * FLAGS.num_nodes)
+    # layer_dims.append(power_parser.output_capacity(dataset.ally.shape[1])) #TODO: Adapt/Remove to our problem setting
+    #--------- Our code -------- #
+
     for j, dim in enumerate(layer_dims):
       if j != 0:
         model.add_layer('tf.layers', 'dropout', FLAGS.layer_dropout,
@@ -272,16 +290,30 @@ def main(unused_argv):
       if j != len(layer_dims) - 1:
         model.add_layer('tf.contrib.layers', 'batch_norm')
         model.add_layer('tf.nn', FLAGS.nonlinearity)
-    #
-    model.add_layer('mixhop_model', 'psum_output_layer', dataset.ally.shape[1])
-  net = model.activations[-1]
+
+    # model.add_layer('mixhop_model', 'psum_output_layer', dataset.ally.shape[1])
+
+    #--------- Our Code ----------#
+    model.add_layer('mixhop_model', 'reorder', create_dim_inds(power_parser.divide_capacity(len(layer_dims)-2, layer_dims[-2]))) #TODO: Verify the capacity
+    model.add_layer('mixhop_model', 'decoder_layer')
+    # -------- Our Code ----------#
+
+  net = model.activations[-1] #TODO: check this output
 
   ### TRAINING.
   sliced_output = tf.gather(net, ph_indices)
   learn_rate = tf.placeholder(tf.float32, [], 'learn_rate')
 
-  label_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(
-          labels=y, logits=sliced_output))
+  # ------------------ Our code ----------------- #
+  A1 = sliced_output[:, :net.shape[1]/2]
+  A1 = tf.reshape(A1, [A1.shape[0], A1.shape[0]])
+  A2 = sliced_output[:, net.shape[1]/2:]
+  A2 = tf.reshape(A1, [A2.shape[0], A2.shape[0]])
+  label_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y1, logits=A1))
+  label_loss += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y2, logits=A2))
+  # ---------------- Our code ------------------ #
+
+  # label_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=y, logits=sliced_output))
   tf.losses.add_loss(label_loss)
   loss = tf.losses.get_total_loss()
   

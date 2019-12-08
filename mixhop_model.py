@@ -36,6 +36,23 @@ def adj_times_x(adj, x, adj_pow=1):
     x = tf.sparse_tensor_dense_matmul(adj, x)
   return x
 
+def reorder(z, dim_inds):
+  z_feat = tf.gather(z, dim_inds[0], axis=1)
+  z_struct = tf.gather(z, dim_inds[1], axis=1)
+  combined = tf.concat([z_feat, z_struct], axis = 1)
+  return combined
+
+def decode(z):
+  x_t = tf.transpose(z)
+  x_t = tf.matmul(x_t, z)
+  return x_t
+
+def decoder_layer(z):
+  A_feat = tf.reshape(decode(z[:, :z.shape[1]/2]), [z.shape[0], z.shape[0]])
+  A_struct = tf.reshape(decode(z[:, z.shape[1]/2:]), [z.shape[0], z.shape[0]])
+  combined = tf.concat([A_feat, A_struct], axis=1)
+  return combined #TODO: check whether combining them is better
+
 def mixhop_layer(x, sparse_adjacency, adjacency_powers, dim_per_power,
                  kernel_regularizer=None, layer_id=None, replica=None):
   """Constructs MixHop layer.
@@ -129,7 +146,7 @@ class MixHopModel(object):
         'fn': layer_fn_name,
         'args': args,
         'kwargs': copy.deepcopy(kwargs),
-    })
+    }) # TODO: the decoders should be added here
     #
     if 'pass_training' in kwargs:
       kwargs.pop('pass_training')
@@ -199,7 +216,7 @@ def example_pubmed_model(
   model.add_layer('tf.nn', 'tanh')
   model.add_layer('tf.layers', 'dropout', layer_dropout, pass_training=True)
   
-  # Classification Layer
-  model.add_layer('tf.layers', 'dense', num_classes, use_bias=False,
-                  activation=None, pass_kernel_regularizer=True)
+  # Classification Layer --> TODO: This part should be change to adapt to our loss
+  # model.add_layer('tf.layers', 'dense', num_classes, use_bias=False,
+  #                 activation=None, pass_kernel_regularizer=True)
   return model
