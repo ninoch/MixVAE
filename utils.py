@@ -23,7 +23,8 @@ def get_sparse_adj_from_edge_list(base_path):
   # Will be used to construct (sparse) adjacency matrix.
   edge_sets = collections.defaultdict(set)
   for node, neighbors in edge_lists.items():
-    edge_sets[node].add(node)   # Add self-connections
+    if base_path.endswith('.graph'):
+      edge_sets[node].add(node)   # Add self-connections
     for n in neighbors:
       edge_sets[node].add(n)
       edge_sets[n].add(node)  # Assume undirected.

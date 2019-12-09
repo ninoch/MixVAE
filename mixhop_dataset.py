@@ -111,6 +111,13 @@ class Dataset(object):
     self.sp_featbased_tensor = None
     self.sp_structural_tensor = None
 
+  def show_info(self):
+    print ("\tNumber of nodes = {}".format(self.num_nodes))
+    print ("\tNumber of edges + self-loop = {}".format(len(self.adj_indices)))
+    print ("\tNumber of feature-based edges = {}".format(len(self.featbased_indices)))
+    print ("\tNumber of structural-based edges = {}".format(len(self.structural_indices)))
+
+    
   def populate_feed_dict(self, feed_dict):
     """Adds the adjacency matrix and allx to placeholders."""
     sp_adj_tensor = self.sparse_adj_tensor()
