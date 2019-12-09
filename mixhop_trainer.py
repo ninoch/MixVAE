@@ -299,7 +299,7 @@ def main(unused_argv):
   dataset = mixhop_dataset.ReadDataset(FLAGS.dataset_dir, FLAGS.dataset_name)
 
   ### MODEL REQUIREMENTS (Placeholders, adjacency tensor, regularizers)
-  x = dataset.sparse_allx_tensor() #TODO: check it to be placeholder
+  x = tf.placeholder(tf.float32, [None, ]) # dataset.get_next_batch() #TODO: check the shape
   y1 = tf.placeholder(tf.float32, [None, dataset.ally.shape[1]], name='y1') #TODO: check the shape of placeholder
   y2 = tf.placeholder(tf.float32, [None, dataset.ally.shape[1]], name='y2') #TODO: check the shape of placeholder
   # TODO: load y1, y2 here for as edges in A1, A2
@@ -308,9 +308,9 @@ def main(unused_argv):
   is_training = tf.placeholder_with_default(True, [], name='is_training')
 
   pows_parser = AdjacencyPowersParser()  # Parses flag --adj_pows
-  num_x_entries = dataset.x_indices.shape[0]
+  num_x_entries = dataset.x_indices.shape[0] #TODO: Ask Nazanin
 
-  sparse_adj = dataset.sparse_adj_tensor() #TODO: check it to be placeholder
+  sparse_adj = tf.placeholder(tf.float32, [None, ]) #dataset.sparse_adj_tensor() #TODO: check it to be placeholder, shape, sparsity
   kernel_regularizer = CombinedRegularizer(FLAGS.l2reg, FLAGS.l2reg) #  keras_regularizers.l2(FLAGS.l2reg)
   
   ### BUILD MODEL
@@ -352,57 +352,62 @@ def main(unused_argv):
 
   # train_indices = range(num_train_nodes)
 
-  feed_dict = {y: dataset.ally[train_indices]}
-  dataset.populate_feed_dict(feed_dict)
+  # feed_dict = {y: dataset.ally[train_indices]}
+  # dataset.populate_feed_dict(feed_dict)
+  feed_dict = {}
   LAST_STEP = collections.Counter()
   accuracy_monitor = AccuracyMonitor(sess, FLAGS.early_stop_steps)
 
   # Step function makes a single update, prints accuracies, and invokes
   # accuracy_monitor to keep track of test accuracy and parameters @ best
   # validation accuracy
-  def step(adj, x, y1, y2, lr=None, columns=None):
+  def step(dataset, lr=None, columns=None):
     if lr is not None:
       feed_dict[learn_rate] = lr
     i = LAST_STEP['step']
     LAST_STEP['step'] += 1
     feed_dict[is_training] = True
-    feed_dict[ph_indices] = train_indices # TODO: change to the next batch
+    x_batch, adj_batch, y1_batch, y2_batch = dataset.get_next_batch()
+    feed_dict[x], feed_dict[sparse_adj], feed_dict[y1], feed_dict[y2] = x_batch, adj_batch, y1_batch, y2_batch
 
     # Train step
-    train_preds, loss_value, _ = sess.run((sliced_output, label_loss, train_op), feed_dict)
+    train_preds_A1, train_preds_A2, loss_value, _ = sess.run((A1, A2, label_loss, train_op), feed_dict)
     
-    if numpy.isnan(loss_value).any():
+    if np.isnan(loss_value).any():
       print('NaN value reached. Debug please.')
       import IPython; IPython.embed()
-    train_accuracy = numpy.mean(
-        train_preds.argmax(axis=1) == dataset.ally[train_indices].argmax(axis=1))
-    
-    feed_dict[is_training] = False
-    feed_dict[ph_indices] = test_indices # TODO: change to get the next batch
-    test_preds = sess.run(sliced_output, feed_dict)
-    test_accuracy = numpy.mean(
-        test_preds.argmax(axis=1) == dataset.ally[test_indices].argmax(axis=1))
-    feed_dict[ph_indices] = validate_indices  # TODO: change to the next batch
-    validate_preds = sess.run(sliced_output, feed_dict)
-    validate_accuracy = numpy.mean(
-        validate_preds.argmax(axis=1) == dataset.ally[validate_indices].argmax(axis=1))
 
-    keep_going = accuracy_monitor.mark_accuracy(validate_accuracy, test_accuracy, i)
+    train_accuracy_A1 = np.mean(train_preds_A1.argmax(axis=1) == y1) #TODO: change the argmax part
+    train_accuracy_A2 = np.mean(train_preds_A2.argmax(axis=1) == y2) #TODO: change the argmax part
 
-    print('%i. (loss=%g). Acc: train=%f val=%f test=%f  (@ best val test=%f)' % (
-        i, loss_value, train_accuracy, validate_accuracy, test_accuracy,
-        accuracy_monitor.best[1]))
-    if keep_going:
-      return True
-    else:
-      print('Early stopping')
-      return False
+    #TODO: add validation set -> monitor accuracy here
+
+    # feed_dict[is_training] = False
+    # feed_dict[ph_indices] = test_indices # TODO: change to get the next batch
+    # test_preds = sess.run(sliced_output, feed_dict)
+    # test_accuracy = numpy.mean(
+    #     test_preds.argmax(axis=1) == dataset.ally[test_indices].argmax(axis=1))
+    # feed_dict[ph_indices] = validate_indices  # TODO: change to the next batch
+    # validate_preds = sess.run(sliced_output, feed_dict)
+    # validate_accuracy = numpy.mean(
+    #     validate_preds.argmax(axis=1) == dataset.ally[validate_indices].argmax(axis=1))
+    #
+    # keep_going = accuracy_monitor.mark_accuracy(validate_accuracy, test_accuracy, i)
+    #
+    # print('%i. (loss=%g). Acc: train=%f val=%f test=%f  (@ best val test=%f)' % (
+    #     i, loss_value, train_accuracy, validate_accuracy, test_accuracy,
+    #     accuracy_monitor.best[1]))
+    # if keep_going:
+    #   return True
+    # else:
+    #     print('Early stopping')
+    return True
 
   ### TRAINING LOOP
   lr = FLAGS.learn_rate
   lr_decrement = FLAGS.lr_decrement_ratio_of_initial * FLAGS.learn_rate
   for i in range(FLAGS.num_train_steps):
-    if not step(lr=lr):
+    if not step(dataset, lr=lr):
       break
 
     if i > 0 and i % FLAGS.lr_decrement_every == 0:
