@@ -5,6 +5,7 @@ import sys
 import numpy
 import scipy.sparse
 import tensorflow as tf
+from utils import *
 
 def concatenate_csr_matrices_by_rows(matrix1, matrix2):
   """Concatenates sparse csr matrices matrix1 above matrix2.
@@ -40,18 +41,27 @@ def ReadDataset(dataset_dir, dataset_name):
 
   if True:
     base_path = os.path.join(dataset_dir, dataset_name)
+    # num_nodes, graph_dataset, features_dataset, featbased_dataset, struct_dataset = get_data_readers(base_path, file_names, get_labels=True)
 
-    features = load_x(base_path + '.allx')
+    # files_train_x, files_train_y = get_filename_data_readers(train_ids_file, True)
+    # data_features = features_dataset.map(load_x)
+    # data_adj = graph_dataset.map(get_sparse_adj_from_edge_list)
+    # data_featbased = featbased_dataset.map(get_sparse_adj_from_edge_list)
+    # data_struct = struct_dataset.map(get_sparse_adj_from_edge_list)
 
-    edge_lists = pickle.load(open(base_path + '.graph', 'rb'))
-    num_nodes = len(edge_lists)
+    # data_zipped = tf.data.Dataset.zip((data_features, data_adj, data_featbased, data_struct))
+    # data_xy = data_xy.repeat()
+    # data_xy = data_xy.shuffle(300).batch(self.batch_size)
+    # self.itr_xy = tf.compat.v1.data.make_initializable_iterator(data_xy)
+    # self.next_batch = self.itr_xy.get_next()
 
-    y1_lists = numpy.array(numpy.load(base_path + '.ally1'), dtype='float32')
-    y2_lists = numpy.array(numpy.load(base_path + '.ally2'), dtype='float32')
+    features = load_x(base_path + '.x')
+    adj_indices, adj_values = get_sparse_adj_from_edge_list(base_path + '.graph')
+    featbased_ind, feabased_values = get_sparse_adj_from_edge_list(base_path + '.y1')
+    struct_ind, struct_values = get_sparse_adj_from_edge_list(base_path + '.y2')
 
-    adj_indices, adj_values = get_sparse_adj_from_edge_list(edge_lists, normalize=True)
-    featbased_ind, feabased_values = get_sparse_adj_from_edge_list(y1_lists, normalize=False)
-    struct_ind, struct_values = get_sparse_adj_from_edge_list(y2_lists, normalize=False)
+    num_nodes = features.shape[0]
+
   else:
     # TODO(ninoch): Add real data here 
     pass 
@@ -94,6 +104,8 @@ class Dataset(object):
     self.adj_indices = adj_indices
     self.adj_values = adj_values
 
+    print ("sum(adj) = {}, sum(y1) = {}, sum(y2) = {}".format(sum(adj_values), sum(featbased_values), sum(structural_values)))
+
     self.sp_features_tensor = None
     self.sp_adj_tensor = None
     self.sp_featbased_tensor = None
@@ -119,7 +131,7 @@ class Dataset(object):
 
       self.x_indices_ph = tf.placeholder(
           tf.int64, [len(xrows), 2], name='x_indices')
-      dense_shape = self.allx.shape
+      dense_shape = self.features.shape
       self.sp_features_tensor = tf.SparseTensor(
           self.x_indices_ph, x_values, dense_shape)
 
@@ -141,6 +153,10 @@ class Dataset(object):
     return self.sp_featbased_tensor, self.sp_structural_tensor
 
   def get_next_batch(self):
+    # self.x_shapes = self.next_batch[0]
+    # self.x = self.next_batch[1]
+    # self.y = self.next_batch[2]
+
     return self.sparse_feature_tensor(), self.sparse_adj_tensor(), self.sparse_y_tensor()
 
 

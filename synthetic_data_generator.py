@@ -29,7 +29,11 @@ def get_stochastic_block_matrix_edges(n, clus, p, q):
 
 	return edges
 
-
+def write_edge_list(A, file_name):
+	G = nx.from_numpy_matrix(A)
+	d = {n: G.neighbors(n) for n in G.nodes()}
+	pickle.dump(d, open(file_name, "wb"))
+	# nx.write_edgelist(G, file_name, data=False)
 
 if __name__ == '__main__':
 	"""
@@ -120,9 +124,8 @@ print (y1.shape)
 print (y2.shape)
 print (np.sum(adj), np.sum(y1), np.sum(y2))
 
-pickle.dump(adj, open("data/synthetic/{}.graph".format(file_name), "wb"))
-pickle.dump(feat, open("data/synthetic/{}.allx".format(file_name), "wb"))
-pickle.dump(y1, open("data/synthetic/{}.ally1".format(file_name), "wb"))
-pickle.dump(y2, open("data/synthetic/{}.ally2".format(file_name), "wb"))
-
+write_edge_list(adj, "data/synthetic/{}.graph".format(file_name))
+write_edge_list(y1,  "data/synthetic/{}.y1".format(file_name))
+write_edge_list(y2,  "data/synthetic/{}.y2".format(file_name))
+pickle.dump(feat, open("data/synthetic/{}.x".format(file_name), "wb"))
 
