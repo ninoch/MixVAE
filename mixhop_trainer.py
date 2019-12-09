@@ -84,7 +84,7 @@ flags.DEFINE_float('lr_decrement_ratio_of_initial', 0.01,
                    'this value * --learn_rate.')
 flags.DEFINE_float('lr_decrement_every', 40,
                    'Learning rate will be decremented every this many steps.')
-flags.DEFINE_integer('num_nodes', 20 , 'Number of nodes in the training graph')
+flags.DEFINE_integer('num_nodes', 2000 , 'Number of nodes in the training graph')
 FLAGS = flags.FLAGS
 
 
@@ -301,18 +301,19 @@ def main(unused_argv):
   # 9630.0 2090.0 7756.0
 
   ### MODEL REQUIREMENTS (Placeholders, adjacency tensor, regularizers)
-  x = tf.placeholder(tf.float32, [None, ]) # dataset.get_next_batch() #TODO: check the shape
-  y1 = tf.placeholder(tf.float32, [None, dataset.ally.shape[1]], name='y1') #TODO: check the shape of placeholder
-  y2 = tf.placeholder(tf.float32, [None, dataset.ally.shape[1]], name='y2') #TODO: check the shape of placeholder
+  x = tf.placeholder(tf.float32, [None, None]) # dataset.get_next_batch() #TODO: check the shape
+  y1 = tf.placeholder(tf.float32, [None, None], name='y1') #TODO: check the shape of placeholder
+  y2 = tf.placeholder(tf.float32, [None, None], name='y2') #TODO: check the shape of placeholder
   # TODO: load y1, y2 here for as edges in A1, A2
 
   # ph_indices = tf.placeholder(tf.int64, [None])
   is_training = tf.placeholder_with_default(True, [], name='is_training')
 
   pows_parser = AdjacencyPowersParser()  # Parses flag --adj_pows
-  num_x_entries = dataset.x_indices.shape[0] #TODO: Ask Nazanin
+ # num_x_entries = dataset.x_indices.shape[0] #TODO: Ask Nazanin
+  num_x_entries = tf.constant(8000)
 
-  sparse_adj = tf.placeholder(tf.float32, [None, ]) #dataset.sparse_adj_tensor() #TODO: check it to be placeholder, shape, sparsity
+  sparse_adj = tf.placeholder(tf.float32, [None, None]) #dataset.sparse_adj_tensor() #TODO: check it to be placeholder, shape, sparsity
   kernel_regularizer = CombinedRegularizer(FLAGS.l2reg, FLAGS.l2reg) #  keras_regularizers.l2(FLAGS.l2reg)
   
   ### BUILD MODEL
