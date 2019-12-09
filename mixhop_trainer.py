@@ -20,9 +20,9 @@ import numpy as np
 
 # IO Flags.
 flags.DEFINE_string('dataset_dir',
-                    os.path.join(os.environ['HOME'], 'data/planetoid/data'),
-                    'Directory containing all datasets. We assume the format '
-                    'of Planetoid')
+                    # os.path.join(os.environ['HOME'], 'data/planetoid/data'),
+                    os.path.join('data/synthetic/'),
+                    'Directory containing all datasets. We assume the format ')
 flags.DEFINE_string('results_dir', 'results',
                     'Evaluation results will be written here.')
 flags.DEFINE_string('train_dir', 'trained_models',
@@ -297,6 +297,8 @@ def main(unused_argv):
 
   ### LOAD DATASET
   dataset = mixhop_dataset.ReadDataset(FLAGS.dataset_dir, FLAGS.dataset_name)
+  dataset.show_info()
+  # 9630.0 2090.0 7756.0
 
   ### MODEL REQUIREMENTS (Placeholders, adjacency tensor, regularizers)
   x = tf.placeholder(tf.float32, [None, ]) # dataset.get_next_batch() #TODO: check the shape
