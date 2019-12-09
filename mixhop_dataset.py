@@ -1,4 +1,3 @@
-import collections
 import os
 import pickle
 import sys
@@ -28,7 +27,6 @@ def load_x(filename):
   else:
     return numpy.load(filename)
 
-
 def ReadDataset(dataset_dir, dataset_name):
   """Returns dataset files given e.g. ind.pubmed as a dataset_name.
  
@@ -39,83 +37,31 @@ def ReadDataset(dataset_dir, dataset_name):
   Returns:
     Dataset object (defined below).
   """
-  base_path = os.path.join(dataset_dir, dataset_name)
-  edge_lists = pickle.load(open(base_path + '.graph', 'rb'))
 
-  allx = load_x(base_path + '.allx')
-  ally = numpy.array(numpy.load(base_path + '.ally'), dtype='float32')
+  if True:
+    base_path = os.path.join(dataset_dir, dataset_name)
 
-  # TODO(haija): Support Homophily Datasets [and upload them]
-  if False: #FLAGS.homophily_dataset:
-    # TODO(haija): Support Homophily and analysis of delta-op.
-    if False:  #FLAGS.analyze_delta_opness:
-      x_distances = []
-      radius = 300
-      angles = numpy.arange(0, numpy.pi*2, numpy.pi*2/50.0)
-      for theta in angles:
-        gaussian_y = radius * numpy.cos(theta)
-        gaussian_x = radius * numpy.sin(theta)
-        center = numpy.array([gaussian_x, gaussian_y])
-        x_distances.append(
-            numpy.expand_dims( ((allx - center)**2).sum(axis=1), 1))
-      x_sims = numpy.concatenate(x_distances, axis=1)
-      x_sims = numpy.exp(-1e-5*x_sims) 
-      allx = x_sims
+    features = load_x(base_path + '.allx')
 
-    llallx = scipy.sparse.csr_matrix(allx).tolil()
+    edge_lists = pickle.load(open(base_path + '.graph', 'rb'))
+    num_nodes = len(edge_lists)
 
-    num_train = len(ally) / 3
-    # TODO Load from offline.
-    test_idx = range(num_train*2, num_train*3)
+    y1_lists = numpy.array(numpy.load(base_path + '.ally1'), dtype='float32')
+    y2_lists = numpy.array(numpy.load(base_path + '.ally2'), dtype='float32')
 
+    adj_indices, adj_values = get_sparse_adj_from_edge_list(edge_lists, normalize=True)
+    featbased_ind, feabased_values = get_sparse_adj_from_edge_list(y1_lists, normalize=False)
+    struct_ind, struct_values = get_sparse_adj_from_edge_list(y2_lists, normalize=False)
   else:
-    testx = load_x(base_path + '.tx')
+    # TODO(ninoch): Add real data here 
+    pass 
 
-    # Add test
-    test_idx = list(map(int, open(base_path + '.test.index').read().split('\n')[:-1]))
-
-    num_test_examples = max(test_idx) - min(test_idx) + 1
-    sparse_zeros = scipy.sparse.csr_matrix((num_test_examples, allx.shape[1]),
-                                           dtype='float32')
-
-    allx = concatenate_csr_matrices_by_rows(allx, sparse_zeros)
-    llallx = allx.tolil()
-    llallx[test_idx] = testx
-    #allx = scipy.vstack([allx, sparse_zeros])
-
-    test_idx_set = set(test_idx)
-
-
-    testy = numpy.array(numpy.load(base_path + '.ty'), dtype='float32')
-    ally = numpy.concatenate(
-        [ally, numpy.zeros((num_test_examples, ally.shape[1]), dtype='float32')],
-        0)
-    ally[test_idx] = testy
-
-  num_nodes = len(edge_lists)
-
-  # Will be used to construct (sparse) adjacency matrix.
-  edge_sets = collections.defaultdict(set)
-  for node, neighbors in edge_lists.items():
-    edge_sets[node].add(node)   # Add self-connections
-    for n in neighbors:
-      edge_sets[node].add(n)
-      edge_sets[n].add(node)  # Assume undirected.
-
-  # Now, build adjacency list.
-  adj_indices = []
-  adj_values = []
-  for node, neighbors in edge_sets.items():
-    for n in neighbors:
-      adj_indices.append((node, n))
-      adj_values.append(1 / (numpy.sqrt(len(neighbors) * len(edge_sets[n]))))
-
-  adj_indices = numpy.array(adj_indices, dtype='int32')
-  adj_values = numpy.array(adj_values, dtype='float32')
   return Dataset(
-      num_nodes=num_nodes, edge_sets=edge_sets, test_indices=test_idx,
-      adj_indices=adj_indices, adj_values=adj_values, allx=llallx, ally=ally)
-
+      num_nodes=num_nodes,
+      features=features, 
+      featbased_indices = featbased_ind, featbased_values = feabased_values,
+      structural_indices = struct_ind, structural_values = struct_values,
+      adj_indices=adj_indices, adj_values=adj_values)
 
 class Dataset(object):
   """Dataset object giving access to sparse feature & adjacency matrices.
@@ -130,17 +76,28 @@ class Dataset(object):
   feed_dict = {}   # and populate it with your own placeholders etc.
   dataset.populate_feed_dict(feed_dict)  # makes adj and allx tensors runnable.
   """
-  def __init__(self, allx=None, ally=None, num_nodes=None, test_indices=None,
-               edge_sets=None, adj_indices=None, adj_values=None):
-    self.allx = allx
-    self.ally = ally
+  def __init__(self, num_nodes = None,
+      features = None, 
+      featbased_indices = None, featbased_values = None,
+      structural_indices = None, structural_values = None,
+      adj_indices = None, adj_values = None):
     self.num_nodes = num_nodes
-    self.edge_sets = edge_sets
+    self.features = features
+
+
+    self.featbased_indices = featbased_indices
+    self.featbased_values = featbased_values
+
+    self.structural_indices = structural_indices
+    self.structural_values = structural_values
+
     self.adj_indices = adj_indices
     self.adj_values = adj_values
+
+    self.sp_features_tensor = None
     self.sp_adj_tensor = None
-    self.sp_allx_tensor = None
-    self.test_indices = test_indices
+    self.sp_featbased_tensor = None
+    self.sp_structural_tensor = None
 
   def populate_feed_dict(self, feed_dict):
     """Adds the adjacency matrix and allx to placeholders."""
@@ -149,40 +106,41 @@ class Dataset(object):
     feed_dict[self.indices_ph] = self.adj_indices
     feed_dict[self.values_ph] = self.adj_values
 
-  def sparse_allx_tensor(self):
-    if self.sp_allx_tensor is None:
-      xrows, xcols = self.allx.nonzero()
+  def sparse_feature_tensor(self):
+    if self.sp_features_tensor is None:
+      xrows, xcols = self.features.nonzero()
       self.x_indices = numpy.concatenate(
           [numpy.expand_dims(xrows, 1), numpy.expand_dims(xcols, 1)], axis=1)
-      # TODO(haija): Support Homophily Datasets [and upload them]
-      if False: # FLAGS.homophily_dataset:
-        x_values = numpy.array(self.allx[xrows, xcols].todense(), dtype='float32')[0]
 
+      if True: # For synthetic data only 
+        x_values = numpy.array(self.features[xrows, xcols].todense(), dtype='float32')[0]
       else:
         x_values = tf.ones([len(xrows)], dtype=tf.float32)
+
       self.x_indices_ph = tf.placeholder(
           tf.int64, [len(xrows), 2], name='x_indices')
       dense_shape = self.allx.shape
-      self.sp_allx_tensor = tf.SparseTensor(
+      self.sp_features_tensor = tf.SparseTensor(
           self.x_indices_ph, x_values, dense_shape)
 
-    return self.sp_allx_tensor
+    return self.sp_features_tensor
 
   def sparse_adj_tensor(self):
     if self.sp_adj_tensor is None:
-      self.indices_ph = tf.placeholder(
-          tf.int64, [len(self.adj_indices), 2], name='indices')
-      self.values_ph = tf.placeholder(
-           tf.float32, [len(self.adj_indices)], name='values')
-      dense_shape = [self.num_nodes, self.num_nodes]
-      self.sp_adj_tensor = tf.SparseTensor(
-          self.indices_ph, self.values_ph, dense_shape)
+      self.sp_adj_tensor = get_sparse_adj_tensor(self.num_nodes, len(self.adj_indices), "adj")
 
     return self.sp_adj_tensor
 
-  def get_partition_indices(self, num_train_nodes, num_validate_nodes):
-    train_indices = list(range(num_train_nodes))
-    validate_indices = list(range(
-        num_train_nodes, num_train_nodes + num_validate_nodes))
-    test_indices = self.test_indices
-    return train_indices, validate_indices, test_indices
+  def sparse_y_tensor(self):
+    if self.sp_featbased_tensor is None:
+      self.sp_featbased_tensor = get_sparse_adj_tensor(self.num_nodes, len(self.featbased_indices), "y1")
+
+    if self.sp_structural_tensor is None:
+      self.sp_structural_tensor = get_sparse_adj_tensor(self.num_nodes, len(self.structural_indices), "y2")
+
+    return self.sp_featbased_tensor, self.sp_structural_tensor
+
+  def get_next_batch(self):
+    return self.sparse_feature_tensor(), self.sparse_adj_tensor(), self.sparse_y_tensor()
+
+
