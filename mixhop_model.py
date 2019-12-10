@@ -37,6 +37,8 @@ def adj_times_x(adj, x, adj_pow=1):
   return x
 
 def reorder(z, dim_inds):
+  print('This is the dim_inds')
+  print(dim_inds)
   z_feat = tf.gather(z, dim_inds[0], axis=1)
   z_struct = tf.gather(z, dim_inds[1], axis=1)
   combined = tf.concat([z_feat, z_struct], axis = 1)
@@ -44,12 +46,13 @@ def reorder(z, dim_inds):
 
 def decode(z):
   x_t = tf.transpose(z)
-  x_t = tf.matmul(x_t, z)
+  x_t = tf.matmul(z, x_t)
   return x_t
 
 def decoder_layer(z):
-  A_feat = tf.reshape(decode(z[:, :z.shape[1]/2]), [z.shape[0], z.shape[0]])
-  A_struct = tf.reshape(decode(z[:, z.shape[1]/2:]), [z.shape[0], z.shape[0]])
+  A_feat = decode(z[:, :z.shape[1]//2])
+  A_struct = decode(z[:, z.shape[1]//2:])
+
   combined = tf.concat([A_feat, A_struct], axis=1)
   return combined #TODO: check whether combining them is better
 

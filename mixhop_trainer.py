@@ -225,10 +225,12 @@ def create_dim_inds(dim_list):
     z1_inds = []
     z2_inds = []
     offset = 0
+    print('This is the dim list:  ')
+    print(dim_list)
     for i in range(len(dim_list)):
-        for j in range(dim_list[i]/2):
+        for j in range(dim_list[i]//2):
             z1_inds.append(offset + j)
-            z2_inds.append(offset + dim_list[i]/2 + j)
+            z2_inds.append(offset + int(dim_list[i]/2) + j)
         offset += dim_list[i]
     return np.array(z1_inds), np.array(z2_inds)
 
@@ -245,19 +247,22 @@ def build_model(sparse_adj, x, is_training, kernel_regularizer, num_x_entries):
 
         power_parser = AdjacencyPowersParser()
         layer_dims = list(map(int, FLAGS.hidden_dims_csv.split(',')))
-
+        print(layer_dims)
         # --------- Our code --------- #
-        layer_dims.append(2 * FLAGS.num_nodes)
+        # layer_dims.append(2 * FLAGS.num_nodes)
         # layer_dims.append(power_parser.output_capacity(dataset.ally.shape[1])) #TODO: Adapt/Remove to our problem setting
         # --------- Our code -------- #
-
+        print(layer_dims)
         for j, dim in enumerate(layer_dims):
             if j != 0:
                 model.add_layer('tf.layers', 'dropout', FLAGS.layer_dropout,
                                 pass_training=True)
             capacities = power_parser.divide_capacity(j, dim)
+            print(' >>>> the layer is:' + str(j) + ' capacitities: ' + str(capacities))
+            print(power_parser.powers())
             model.add_layer('self', 'mixhop_layer', power_parser.powers(), capacities,
                             layer_id=j, pass_kernel_regularizer=True)
+            print('<<<< Mixhop layer for layer ' + str(j))
 
             if j != len(layer_dims) - 1:
                 model.add_layer('tf.contrib.layers', 'batch_norm')
@@ -278,9 +283,9 @@ def build_model(sparse_adj, x, is_training, kernel_regularizer, num_x_entries):
 
 
     # ------------------ Our code ----------------- #
-    A1 = sliced_output[:, :net.shape[1] / 2]
+    A1 = sliced_output[:, :net.shape[1] // 2]
     A1 = tf.reshape(A1, [A1.shape[0], A1.shape[0]])
-    A2 = sliced_output[:, net.shape[1] / 2:]
+    A2 = sliced_output[:, net.shape[1] // 2:]
     A2 = tf.reshape(A2, [A2.shape[0], A2.shape[0]])
     return A1, A2, model
 
@@ -301,9 +306,9 @@ def main(unused_argv):
   # 9630.0 2090.0 7756.0
 
   ### MODEL REQUIREMENTS (Placeholders, adjacency tensor, regularizers)
-  x = tf.placeholder(tf.float32, [None, None]) # dataset.get_next_batch() #TODO: check the shape
-  y1 = tf.placeholder(tf.float32, [None, None], name='y1') #TODO: check the shape of placeholder
-  y2 = tf.placeholder(tf.float32, [None, None], name='y2') #TODO: check the shape of placeholder
+  x = tf.sparse_placeholder(tf.float32, [FLAGS.num_nodes, 4]) # dataset.get_next_batch() #TODO: check the shape
+  y1 = tf.placeholder(tf.float32, [None, FLAGS.num_nodes], name='y1') #TODO: check the shape of placeholder
+  y2 = tf.placeholder(tf.float32, [None, FLAGS.num_nodes], name='y2') #TODO: check the shape of placeholder
   # TODO: load y1, y2 here for as edges in A1, A2
 
   # ph_indices = tf.placeholder(tf.int64, [None])
@@ -313,7 +318,7 @@ def main(unused_argv):
  # num_x_entries = dataset.x_indices.shape[0] #TODO: Ask Nazanin
   num_x_entries = tf.constant(8000)
 
-  sparse_adj = tf.placeholder(tf.float32, [None, None]) #dataset.sparse_adj_tensor() #TODO: check it to be placeholder, shape, sparsity
+  sparse_adj = tf.sparse_placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_nodes]) #dataset.sparse_adj_tensor() #TODO: check it to be placeholder, shape, sparsity
   kernel_regularizer = CombinedRegularizer(FLAGS.l2reg, FLAGS.l2reg) #  keras_regularizers.l2(FLAGS.l2reg)
   
   ### BUILD MODEL
