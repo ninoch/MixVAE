@@ -306,9 +306,9 @@ def main(unused_argv):
   # 9630.0 2090.0 7756.0
 
   ### MODEL REQUIREMENTS (Placeholders, adjacency tensor, regularizers)
-  x = tf.sparse_placeholder(tf.float32, [FLAGS.num_nodes, 4]) # dataset.get_next_batch() #TODO: check the shape
-  y1 = tf.placeholder(tf.float32, [None, FLAGS.num_nodes], name='y1') #TODO: check the shape of placeholder
-  y2 = tf.placeholder(tf.float32, [None, FLAGS.num_nodes], name='y2') #TODO: check the shape of placeholder
+  x = tf.sparse_placeholder(tf.float32, [FLAGS.num_nodes, 4], name='x') # dataset.get_next_batch() #TODO: check the shape
+  y1 = tf.placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_nodes], name='y1') #TODO: check the shape of placeholder
+  y2 = tf.placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_nodes], name='y2') #TODO: check the shape of placeholder
   # TODO: load y1, y2 here for as edges in A1, A2
 
   # ph_indices = tf.placeholder(tf.int64, [None])
@@ -318,7 +318,7 @@ def main(unused_argv):
  # num_x_entries = dataset.x_indices.shape[0] #TODO: Ask Nazanin
   num_x_entries = tf.constant(8000)
 
-  sparse_adj = tf.sparse_placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_nodes]) #dataset.sparse_adj_tensor() #TODO: check it to be placeholder, shape, sparsity
+  sparse_adj = tf.sparse_placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_nodes], name='sparse_adj') #dataset.sparse_adj_tensor() #TODO: check it to be placeholder, shape, sparsity
   kernel_regularizer = CombinedRegularizer(FLAGS.l2reg, FLAGS.l2reg) #  keras_regularizers.l2(FLAGS.l2reg)
   
   ### BUILD MODEL
@@ -369,17 +369,23 @@ def main(unused_argv):
   # Step function makes a single update, prints accuracies, and invokes
   # accuracy_monitor to keep track of test accuracy and parameters @ best
   # validation accuracy
+
   def step(dataset, lr=None, columns=None):
+    print('==================Next Step=======================')
     if lr is not None:
       feed_dict[learn_rate] = lr
     i = LAST_STEP['step']
     LAST_STEP['step'] += 1
     feed_dict[is_training] = True
+    # i = dataset.get_next_batch()
     x_batch, adj_batch, y1_batch, y2_batch = dataset.get_next_batch()
+
     feed_dict[x], feed_dict[sparse_adj], feed_dict[y1], feed_dict[y2] = x_batch, adj_batch, y1_batch, y2_batch
 
     # Train step
-    train_preds_A1, train_preds_A2, loss_value, _ = sess.run((A1, A2, label_loss, train_op), feed_dict)
+    train_preds_A1, train_preds_A2, loss_value, _ = sess.run((A1, A2, label_loss, train_op),
+                                                             feed_dict={is_training:True, x:x_batch, sparse_adj:adj_batch, y1:y1_batch, y2:y2_batch}
+                                                             )
     
     if np.isnan(loss_value).any():
       print('NaN value reached. Debug please.')
