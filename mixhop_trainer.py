@@ -333,9 +333,21 @@ def main(unused_argv):
   learn_rate = tf.placeholder(tf.float32, [], 'learn_rate')
   # label_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y1_ph, logits=A1))
   # label_loss += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y2_ph, logits=A2))
-  label_loss = masked_softmax_cross_entropy(A1, y1_ph, mask_ph)
-  label_loss += masked_softmax_cross_entropy(A2, y2_ph, mask_ph)
+  y1_weight = (tf.math.reduce_sum(mask_ph) - tf.math.reduce_sum(y1_ph)) / tf.math.reduce_sum(y1_ph)
+  y2_weight = (tf.math.reduce_sum(mask_ph) - tf.math.reduce_sum(y2_ph)) / tf.math.reduce_sum(y2_ph)
+
+  label_loss = masked_softmax_cross_entropy(A1, y1_ph, mask_ph, y1_weight)
+  label_loss += masked_softmax_cross_entropy(A2, y2_ph, mask_ph, y2_weight)
+
+  correct_prediction1 = tf.equal(tf.cast(tf.greater_equal(tf.sigmoid(A1), 0.5), tf.int32), tf.cast(y1_ph, tf.int32))
+  acc1 = tf.reduce_mean(tf.cast(correct_prediction1, tf.float32))
+
+  correct_prediction2 = tf.equal(tf.cast(tf.greater_equal(tf.sigmoid(A2), 0.5), tf.int32), tf.cast(y2_ph, tf.int32))
+  acc2 = tf.reduce_mean(tf.cast(correct_prediction1, tf.float32))
+
   
+  # import IPython
+  # IPython.embed()
   # ---------------- Our code ------------------ #
 
   # label_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=y, logits=sliced_output))
@@ -404,8 +416,10 @@ def main(unused_argv):
     LAST_STEP['step'] += 1
     # i = dataset.get_next_batch()
     x_batch, adj_batch, y1_batch, y2_batch, mask_batch = dataset.get_next_batch()
-    print ("mask batch sum = ", mask_batch.sum())
-    print ("mask batch shape = ", mask_batch.shape)
+  
+    
+    # print ("mask batch sum = ", mask_batch.sum())
+    # print ("mask batch shape = ", mask_batch.shape)
 
     # print (type(x_batch), type(adj_batch), type(y1_batch), type(y2_batch))
 
@@ -418,7 +432,7 @@ def main(unused_argv):
     # import IPython; IPython.embed()
 
     # Train step
-    train_preds_A1, train_preds_A2, loss_value, _ = sess.run((A1, A2, label_loss, train_op), feed_dict = feed_dict)
+    train_preds_A1, train_preds_A2, loss_value, _, a1, a2= sess.run((A1, A2, label_loss, train_op, acc1, acc2), feed_dict = feed_dict)
 
     
     if np.isnan(loss_value).any():
@@ -431,10 +445,15 @@ def main(unused_argv):
     train_accuracy_A1 = np.mean(np.where(mask_batch, train_preds_A1, 0) == y1_ph) #TODO: change the argmax part
     train_accuracy_A2 = np.mean(np.where(mask_batch, train_preds_A2, 0) == y2_ph) #TODO: change the argmax part
 
+
+
+    # print ("accuracy1 = {0:.5f} accuracy 2 = {1:.5f}".format(accuracy1, accuracy2))
+
     pr_1 = np.mean(np.abs(y1_batch - np.where(mask_batch, train_preds_A1, 0)))
     pr_2 = np.mean(np.abs(y2_batch - np.where(mask_batch, train_preds_A2, 0)))
 
     print ("Loss = {0:.2f}, Train distance to label A1 = {1:.5f}, Train distance to label A2 = {2:.5f}".format(loss_value, pr_1, pr_2))
+    print ("\t acc1 = {0:.4f}, acc2 = {1:.4f}".format(a1, a2))
 
     #TODO: add validation set -> monitor accuracy here
 

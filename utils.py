@@ -6,9 +6,9 @@ import scipy.sparse
 import tensorflow as tf
 
 
-def masked_softmax_cross_entropy(preds, labels, mask):
+def masked_softmax_cross_entropy(preds, labels, mask, pos_weight):
     """Softmax cross-entropy loss with masking."""
-    loss = tf.nn.weighted_cross_entropy_with_logits(logits=preds, labels=labels, pos_weight=100)
+    loss = tf.nn.weighted_cross_entropy_with_logits(logits=preds, labels=labels, pos_weight=pos_weight)
     # mask = tf.cast(mask, dtype=tf.float32)
     mask /= tf.reduce_mean(mask)
     loss *= mask
