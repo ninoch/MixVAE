@@ -19,6 +19,8 @@ import simple_dataset as mixhop_dataset
 import mixhop_model
 import numpy as np
 
+from utils import masked_softmax_cross_entropy
+
 # IO Flags.
 flags.DEFINE_string('dataset_dir',
                     # os.path.join(os.environ['HOME'], 'data/planetoid/data'),
@@ -312,6 +314,7 @@ def main(unused_argv):
   sparse_adj_ph = tf.sparse_placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_nodes], name='sparse_adj') #dataset.sparse_adj_tensor() #TODO: check it to be placeholder, shape, sparsity
   y1_ph = tf.placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_nodes], name='y1') #TODO: check the shape of placeholder
   y2_ph = tf.placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_nodes], name='y2') #TODO: check the shape of placeholder
+  mask_ph = tf.placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_nodes], name='mask') #TODO: check the shape of placeholder
   # TODO: load y1, y2 here for as edges in A1, A2
 
   # ph_indices = tf.placeholder(tf.int64, [None])
@@ -328,8 +331,11 @@ def main(unused_argv):
   model.show_model_info()
 
   learn_rate = tf.placeholder(tf.float32, [], 'learn_rate')
-  label_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y1_ph, logits=A1))
-  label_loss += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y2_ph, logits=A2))
+  # label_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y1_ph, logits=A1))
+  # label_loss += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y2_ph, logits=A2))
+  label_loss = masked_softmax_cross_entropy(A1, y1_ph, mask_ph)
+  label_loss += masked_softmax_cross_entropy(A2, y2_ph, mask_ph)
+  
   # ---------------- Our code ------------------ #
 
   # label_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=y, logits=sliced_output))
@@ -374,7 +380,7 @@ def main(unused_argv):
   # validation accuracy
 
 
-  def construct_feed_dict(lr, is_tr, x_batch, adj_batch, y1_batch = None, y2_batch = None):
+  def construct_feed_dict(lr, is_tr, x_batch, adj_batch, y1_batch = None, y2_batch = None, mask_batch=None):
       feed_dict = {}
 
       feed_dict[is_training] = is_tr
@@ -387,6 +393,7 @@ def main(unused_argv):
       if is_tr == True:
         feed_dict[y1_ph] = y1_batch
         feed_dict[y2_ph] = y2_batch
+        feed_dict[mask_ph] = mask_batch
       
       return feed_dict 
 
@@ -398,6 +405,7 @@ def main(unused_argv):
     # i = dataset.get_next_batch()
     x_batch, adj_batch, y1_batch, y2_batch, mask_batch = dataset.get_next_batch()
     print ("mask batch sum = ", mask_batch.sum())
+    print ("mask batch shape = ", mask_batch.shape)
 
     # print (type(x_batch), type(adj_batch), type(y1_batch), type(y2_batch))
 
@@ -406,7 +414,7 @@ def main(unused_argv):
     # import IPython
     # IPython.embed()
 
-    feed_dict = construct_feed_dict(lr, True, x_batch, adj_batch, y1_batch, y2_batch)
+    feed_dict = construct_feed_dict(lr, True, x_batch, adj_batch, y1_batch, y2_batch, mask_batch)
     # import IPython; IPython.embed()
 
     # Train step
@@ -417,11 +425,16 @@ def main(unused_argv):
       print('NaN value reached. Debug please.')
       import IPython; IPython.embed()
 
-    train_accuracy_A1 = np.mean(train_preds_A1.argmax(axis=1) == y1_ph) #TODO: change the argmax part
-    train_accuracy_A2 = np.mean(train_preds_A2.argmax(axis=1) == y2_ph) #TODO: change the argmax part
+    print ("sum A1: ", np.where(mask_batch, train_preds_A1, 0).sum())
+    print ("sum A2: ", np.where(mask_batch, train_preds_A2, 0).sum())
 
+    train_accuracy_A1 = np.mean(np.where(mask_batch, train_preds_A1, 0) == y1_ph) #TODO: change the argmax part
+    train_accuracy_A2 = np.mean(np.where(mask_batch, train_preds_A2, 0) == y2_ph) #TODO: change the argmax part
 
-    print ("Loss = {0:.2f}, Train Accuracy A1 = {1:.5f}, Train Accuracy A2 = {2:.5f}".format(loss_value, train_accuracy_A1, train_accuracy_A2))
+    pr_1 = np.mean(np.abs(y1_batch - np.where(mask_batch, train_preds_A1, 0)))
+    pr_2 = np.mean(np.abs(y2_batch - np.where(mask_batch, train_preds_A2, 0)))
+
+    print ("Loss = {0:.2f}, Train distance to label A1 = {1:.5f}, Train distance to label A2 = {2:.5f}".format(loss_value, pr_1, pr_2))
 
     #TODO: add validation set -> monitor accuracy here
 

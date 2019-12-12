@@ -5,6 +5,15 @@ import numpy
 import scipy.sparse
 import tensorflow as tf
 
+
+def masked_softmax_cross_entropy(preds, labels, mask):
+    """Softmax cross-entropy loss with masking."""
+    loss = tf.nn.weighted_cross_entropy_with_logits(logits=preds, labels=labels, pos_weight=100)
+    # mask = tf.cast(mask, dtype=tf.float32)
+    mask /= tf.reduce_mean(mask)
+    loss *= mask
+    return tf.reduce_mean(loss)
+
 def get_sparse_adj_tensor(num_nodes, num_edges, adj_name): 
   indices_ph = tf.placeholder(tf.int64, [num_edges, 2], name='{}_indices'.format(adj_name))
 
