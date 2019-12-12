@@ -343,7 +343,7 @@ def main(unused_argv):
   acc1 = tf.reduce_mean(tf.cast(correct_prediction1, tf.float32))
 
   correct_prediction2 = tf.equal(tf.cast(tf.greater_equal(tf.sigmoid(A2), 0.5), tf.int32), tf.cast(y2_ph, tf.int32))
-  acc2 = tf.reduce_mean(tf.cast(correct_prediction1, tf.float32))
+  acc2 = tf.reduce_mean(tf.cast(correct_prediction2, tf.float32))
 
   
   # import IPython
@@ -417,7 +417,7 @@ def main(unused_argv):
     # i = dataset.get_next_batch()
     x_batch, adj_batch, y1_batch, y2_batch, mask_batch = dataset.get_next_batch()
   
-    
+
     # print ("mask batch sum = ", mask_batch.sum())
     # print ("mask batch shape = ", mask_batch.shape)
 
