@@ -392,13 +392,14 @@ def main(unused_argv):
 
 
   def step(dataset, lr=None, columns=None):
-    print('==================Next Step=======================')
+    # print('==================Next Step=======================')
     i = LAST_STEP['step']
     LAST_STEP['step'] += 1
     # i = dataset.get_next_batch()
-    x_batch, adj_batch, y1_batch, y2_batch = dataset.get_next_batch()
+    x_batch, adj_batch, y1_batch, y2_batch, mask_batch = dataset.get_next_batch()
+    print ("mask batch sum = ", mask_batch.sum())
 
-    print (type(x_batch), type(adj_batch), type(y1_batch), type(y2_batch))
+    # print (type(x_batch), type(adj_batch), type(y1_batch), type(y2_batch))
 
 
 
@@ -410,6 +411,7 @@ def main(unused_argv):
 
     # Train step
     train_preds_A1, train_preds_A2, loss_value, _ = sess.run((A1, A2, label_loss, train_op), feed_dict = feed_dict)
+
     
     if np.isnan(loss_value).any():
       print('NaN value reached. Debug please.')
@@ -417,6 +419,9 @@ def main(unused_argv):
 
     train_accuracy_A1 = np.mean(train_preds_A1.argmax(axis=1) == y1_ph) #TODO: change the argmax part
     train_accuracy_A2 = np.mean(train_preds_A2.argmax(axis=1) == y2_ph) #TODO: change the argmax part
+
+
+    print ("Loss = {0:.2f}, Train Accuracy A1 = {1:.5f}, Train Accuracy A2 = {2:.5f}".format(loss_value, train_accuracy_A1, train_accuracy_A2))
 
     #TODO: add validation set -> monitor accuracy here
 

@@ -114,6 +114,10 @@ class Dataset(object):
     self.featbased = sp.coo_matrix((self.featbased_values, (self.featbased_indices[:, 0], self.featbased_indices[:, 1])), shape=(self.num_nodes, self.num_nodes))
     self.structural = sp.coo_matrix((self.structural_values, (self.structural_indices[:, 0], self.structural_indices[:, 1])), shape=(self.num_nodes, self.num_nodes))
 
+    self.mask = np.zeros((2000, 2000))
+    for ind in range(50):
+      self.mask[ind*40:(ind + 1)*40, ind*40:(ind + 1)*40] = 1
+
 
     # import IPython
     # IPython.embed()
@@ -199,6 +203,6 @@ class Dataset(object):
     # IPython.embed()
 
 
-    return convert_sparse_matrix_to_sparse_tensor(self.sparse_feature_tensor()), convert_sparse_matrix_to_sparse_tensor(self.adj), np.array(self.featbased.todense()), np.array(self.structural.todense())
+    return convert_sparse_matrix_to_sparse_tensor(self.sparse_feature_tensor()), convert_sparse_matrix_to_sparse_tensor(self.adj), np.array(self.featbased.todense()), np.array(self.structural.todense()), self.mask
 
 
