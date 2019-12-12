@@ -415,8 +415,8 @@ def main(unused_argv):
       print('NaN value reached. Debug please.')
       import IPython; IPython.embed()
 
-    train_accuracy_A1 = np.mean(train_preds_A1.argmax(axis=1) == y1) #TODO: change the argmax part
-    train_accuracy_A2 = np.mean(train_preds_A2.argmax(axis=1) == y2) #TODO: change the argmax part
+    train_accuracy_A1 = np.mean(train_preds_A1.argmax(axis=1) == y1_ph) #TODO: change the argmax part
+    train_accuracy_A2 = np.mean(train_preds_A2.argmax(axis=1) == y2_ph) #TODO: change the argmax part
 
     #TODO: add validation set -> monitor accuracy here
 
