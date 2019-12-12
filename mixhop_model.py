@@ -39,9 +39,13 @@ def adj_times_x(adj, x, adj_pow=1):
 def reorder(z, dim_inds):
   print('This is the dim_inds')
   print(dim_inds)
+  print ('this is shape of z: ', z.shape)
   z_feat = tf.gather(z, dim_inds[0], axis=1)
+  print ('this is shape of feat: ', z_feat.shape)
   z_struct = tf.gather(z, dim_inds[1], axis=1)
+  print ('this is shape of struct: ', z_struct.shape)
   combined = tf.concat([z_feat, z_struct], axis = 1)
+  print ('this is shape of combined: ', combined.shape)
   return combined
 
 def decode(z):
@@ -141,6 +145,14 @@ class MixHopModel(object):
     for layer_def in layer_defs:
       self.add_layer(layer_def['module'], layer_def['fn'], *layer_def['args'],
                      **layer_def['kwargs'])
+
+  def show_model_info(self):
+    print ('############ MODEL ##############')
+    for ind in range(len(self.layer_defs)):
+      print (self.layer_defs[ind]['module'], self.layer_defs[ind]['fn'])
+      print (self.activations[ind].get_shape())
+      print ('---------------------------------')
+    print ('##################################')
 
   def add_layer(self, module_name, layer_fn_name, *args, **kwargs):
     #

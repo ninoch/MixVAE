@@ -14,7 +14,8 @@ import tensorflow.contrib.slim as slim
 from tensorflow.python.keras import regularizers as keras_regularizers
 
 # Project imports.
-import mixhop_dataset
+# import mixhop_dataset
+import simple_dataset as mixhop_dataset
 import mixhop_model
 import numpy as np
 
@@ -287,6 +288,7 @@ def build_model(sparse_adj, x, is_training, kernel_regularizer, num_x_entries):
     A1 = tf.reshape(A1, [A1.shape[0], A1.shape[0]])
     A2 = sliced_output[:, net.shape[1] // 2:]
     A2 = tf.reshape(A2, [A2.shape[0], A2.shape[0]])
+
     return A1, A2, model
 
 def main(unused_argv):
@@ -306,9 +308,10 @@ def main(unused_argv):
   # 9630.0 2090.0 7756.0
 
   ### MODEL REQUIREMENTS (Placeholders, adjacency tensor, regularizers)
-  x = tf.sparse_placeholder(tf.float32, [FLAGS.num_nodes, 4], name='x') # dataset.get_next_batch() #TODO: check the shape
-  y1 = tf.placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_nodes], name='y1') #TODO: check the shape of placeholder
-  y2 = tf.placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_nodes], name='y2') #TODO: check the shape of placeholder
+  x_ph = tf.sparse_placeholder(tf.float32, [FLAGS.num_nodes, 4], name='x') # dataset.get_next_batch() #TODO: check the shape
+  sparse_adj_ph = tf.sparse_placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_nodes], name='sparse_adj') #dataset.sparse_adj_tensor() #TODO: check it to be placeholder, shape, sparsity
+  y1_ph = tf.placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_nodes], name='y1') #TODO: check the shape of placeholder
+  y2_ph = tf.placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_nodes], name='y2') #TODO: check the shape of placeholder
   # TODO: load y1, y2 here for as edges in A1, A2
 
   # ph_indices = tf.placeholder(tf.int64, [None])
@@ -318,14 +321,15 @@ def main(unused_argv):
  # num_x_entries = dataset.x_indices.shape[0] #TODO: Ask Nazanin
   num_x_entries = tf.constant(8000)
 
-  sparse_adj = tf.sparse_placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_nodes], name='sparse_adj') #dataset.sparse_adj_tensor() #TODO: check it to be placeholder, shape, sparsity
   kernel_regularizer = CombinedRegularizer(FLAGS.l2reg, FLAGS.l2reg) #  keras_regularizers.l2(FLAGS.l2reg)
   
   ### BUILD MODEL
-  A1, A2, model = build_model(sparse_adj, x, is_training, kernel_regularizer, num_x_entries)
+  A1, A2, model = build_model(sparse_adj_ph, x_ph, is_training, kernel_regularizer, num_x_entries)
+  model.show_model_info()
+  
   learn_rate = tf.placeholder(tf.float32, [], 'learn_rate')
-  label_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y1, logits=A1))
-  label_loss += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y2, logits=A2))
+  label_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y1_ph, logits=A1))
+  label_loss += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y2_ph, logits=A2))
   # ---------------- Our code ------------------ #
 
   # label_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=y, logits=sliced_output))
@@ -380,12 +384,16 @@ def main(unused_argv):
     # i = dataset.get_next_batch()
     x_batch, adj_batch, y1_batch, y2_batch = dataset.get_next_batch()
 
-    feed_dict[x], feed_dict[sparse_adj], feed_dict[y1], feed_dict[y2] = x_batch, adj_batch, y1_batch, y2_batch
+    print (type(x_batch), type(adj_batch), type(y1_batch), type(y2_batch))
+
+
+    # import IPython
+    # IPython.embed()
+
+    feed_dict[x_ph], feed_dict[sparse_adj_ph], feed_dict[y1_ph], feed_dict[y2_ph] = x_batch, adj_batch, y1_batch, y2_batch
 
     # Train step
-    train_preds_A1, train_preds_A2, loss_value, _ = sess.run((A1, A2, label_loss, train_op),
-                                                             feed_dict={is_training:True, x:x_batch, sparse_adj:adj_batch, y1:y1_batch, y2:y2_batch}
-                                                             )
+    train_preds_A1, train_preds_A2, loss_value, _ = sess.run((A1, A2, label_loss, train_op), feed_dict = feed_dict)
     
     if np.isnan(loss_value).any():
       print('NaN value reached. Debug please.')

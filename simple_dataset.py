@@ -2,10 +2,29 @@ import os
 import pickle
 import sys
 
-import numpy
-import scipy.sparse
+import numpy as np
+import scipy.sparse as sp
 import tensorflow as tf
 from utils import *
+
+
+def sparse_to_tuple(sparse_mx):
+    """Convert sparse matrix to tuple representation."""
+    def to_tuple(mx):
+        if not sp.isspmatrix_coo(mx):
+            mx = mx.tocoo()
+        coords = np.vstack((mx.row, mx.col)).transpose()
+        values = mx.data
+        shape = mx.shape
+        return coords, values, shape
+
+    if isinstance(sparse_mx, list):
+        for i in range(len(sparse_mx)):
+            sparse_mx[i] = to_tuple(sparse_mx[i])
+    else:
+        sparse_mx = to_tuple(sparse_mx)
+
+    return sparse_mx
 
 def concatenate_csr_matrices_by_rows(matrix1, matrix2):
   """Concatenates sparse csr matrices matrix1 above matrix2.
@@ -13,11 +32,11 @@ def concatenate_csr_matrices_by_rows(matrix1, matrix2):
   Adapted from:
   https://stackoverflow.com/questions/6844998/is-there-an-efficient-way-of-concatenating-scipy-sparse-matrices
   """
-  new_data = numpy.concatenate((matrix1.data, matrix2.data))
-  new_indices = numpy.concatenate((matrix1.indices, matrix2.indices))
+  new_data = np.concatenate((matrix1.data, matrix2.data))
+  new_indices = np.concatenate((matrix1.indices, matrix2.indices))
   new_ind_ptr = matrix2.indptr + len(matrix1.data)
   new_ind_ptr = new_ind_ptr[1:]
-  new_ind_ptr = numpy.concatenate((matrix1.indptr, new_ind_ptr))
+  new_ind_ptr = np.concatenate((matrix1.indptr, new_ind_ptr))
 
   return scipy.sparse.csr_matrix((new_data, new_indices, new_ind_ptr))
 
@@ -26,7 +45,7 @@ def load_x(filename):
   if sys.version_info > (3, 0):
     return pickle.load(open(filename, 'rb'), encoding='latin1')
   else:
-    return numpy.load(filename)
+    return np.load(filename)
 
 def ReadDataset(dataset_dir, dataset_name):
   """Returns dataset files given e.g. ind.pubmed as a dataset_name.
@@ -104,12 +123,20 @@ class Dataset(object):
     self.adj_indices = adj_indices
     self.adj_values = adj_values
 
-    print ("sum(adj) = {}, sum(y1) = {}, sum(y2) = {}".format(sum(adj_values), sum(featbased_values), sum(structural_values)))
+    self.adj = sp.coo_matrix((self.adj_values, (self.adj_indices[:, 0], self.adj_indices[:, 1])), shape=(self.num_nodes, self.num_nodes))
+    self.featbased = sp.coo_matrix((self.featbased_values, (self.featbased_indices[:, 0], self.featbased_indices[:, 1])), shape=(self.num_nodes, self.num_nodes))
+    self.structural = sp.coo_matrix((self.structural_values, (self.structural_indices[:, 0], self.structural_indices[:, 1])), shape=(self.num_nodes, self.num_nodes))
 
-    self.sp_features_tensor = None
-    self.sp_adj_tensor = None
-    self.sp_featbased_tensor = None
-    self.sp_structural_tensor = None
+
+    # import IPython
+    # IPython.embed()
+
+    # print ("sum(adj) = {}, sum(y1) = {}, sum(y2) = {}".format(sum(self.adj.values), sum(self.featbased), sum(self.structural)))
+
+    # self.sp_features_tensor = None
+    # self.sp_adj_tensor = None
+    # self.sp_featbased_tensor = None
+    # self.sp_structural_tensor = None
 
   def show_info(self):
     print ("\tNumber of nodes = {}".format(self.num_nodes))
@@ -117,19 +144,8 @@ class Dataset(object):
     print ("\tNumber of feature-based edges = {}".format(len(self.featbased_indices)))
     print ("\tNumber of structural-based edges = {}".format(len(self.structural_indices)))
 
-    
-  def populate_feed_dict(self, feed_dict):
-    """Adds the adjacency matrix and allx to placeholders."""
-    sp_adj_tensor = self.sparse_adj_tensor()
-    feed_dict[self.x_indices_ph] = self.x_indices
-    feed_dict[self.indices_ph] = self.adj_indices
-    feed_dict[self.values_ph] = self.adj_values
-
   def sparse_feature_tensor(self):
-    if self.sp_features_tensor is None:
       xrows, xcols = self.features.nonzero()
-      self.x_indices = numpy.concatenate(
-          [numpy.expand_dims(xrows, 1), numpy.expand_dims(xcols, 1)], axis=1)
 
       if True: # For synthetic data only 
         x_values = self.features[xrows, xcols]
@@ -141,10 +157,28 @@ class Dataset(object):
       # import IPython
       # IPython.embed()
 
-      self.sp_features_tensor = tf.SparseTensor(
-          self.x_indices, x_values, dense_shape)
+      return sp.coo_matrix((x_values, (xrows, xcols)), shape=dense_shape)
 
-    return self.sp_features_tensor
+
+    # if self.sp_features_tensor is None:
+    #   xrows, xcols = self.features.nonzero()
+    #   self.x_indices = np.concatenate(
+    #       [np.expand_dims(xrows, 1), np.expand_dims(xcols, 1)], axis=1)
+
+    #   if True: # For synthetic data only 
+    #     x_values = self.features[xrows, xcols]
+    #   else:
+    #     x_values = tf.ones([len(xrows)], dtype=tf.float32)
+
+    #   dense_shape = self.features.shape
+
+    #   # import IPython
+    #   # IPython.embed()
+
+    #   self.sp_features_tensor = tf.SparseTensor(
+    #       self.x_indices, x_values, dense_shape)
+
+    # return self.sp_features_tensor
 
   def sparse_adj_tensor(self):
     if self.sp_adj_tensor is None:
@@ -171,6 +205,13 @@ class Dataset(object):
 
     # TODO[ninoch]: How to handle sparse y, with sigmoid cross entropy? A1, A2 are not sparse, but y1, y2 could be sparse.
     # return self.sparse_feature_tensor(), self.sparse_adj_tensor(), self.sparse_feat_based_tensor(), self.sparse_structural_tensor()
-    return self.sparse_feature_tensor(), self.sparse_adj_tensor(), tf.sparse.to_dense(self.sparse_feat_based_tensor()), tf.sparse.to_dense(self.sparse_structural_tensor())
+    # return self.sparse_feature_tensor(), self.sparse_adj_tensor(), tf.sparse.to_dense(self.sparse_feat_based_tensor()), tf.sparse.to_dense(self.sparse_structural_tensor())
+
+
+    # import IPython
+    # IPython.embed()
+
+
+    return sparse_to_tuple(self.sparse_feature_tensor()), sparse_to_tuple(self.adj), np.array(self.featbased.todense()), np.array(self.structural.todense())
 
 
