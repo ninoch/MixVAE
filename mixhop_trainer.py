@@ -12,12 +12,10 @@ import numpy
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from tensorflow.python.keras import regularizers as keras_regularizers
-
-# Project imports.
-# import mixhop_dataset
 import simple_dataset as mixhop_dataset
 import mixhop_model
 import numpy as np
+import matplotlib.pyplot as plt
 
 from utils import masked_softmax_cross_entropy
 
@@ -69,7 +67,7 @@ flags.DEFINE_string('adj_pows', '1',
                     'necessary.')
 
 # Training Flags.
-flags.DEFINE_integer('num_train_steps', 400, 'Number of training steps.')
+flags.DEFINE_integer('num_train_steps', 100, 'Number of training steps.')
 flags.DEFINE_integer('early_stop_steps', 50, 'If the validation accuracy does '
                      'not increase for this many steps, training is halted.')
 flags.DEFINE_float('l2reg', 5e-4, 'L2 Regularization on Kernels.')
@@ -88,6 +86,7 @@ flags.DEFINE_float('lr_decrement_ratio_of_initial', 0.01,
 flags.DEFINE_float('lr_decrement_every', 40,
                    'Learning rate will be decremented every this many steps.')
 flags.DEFINE_integer('num_nodes', 2000 , 'Number of nodes in the training graph')
+flags.DEFINE_integer('num_features', 4, 'Number of features for each node')
 FLAGS = flags.FLAGS
 
 
@@ -250,42 +249,27 @@ def build_model(sparse_adj, x, is_training, kernel_regularizer, num_x_entries):
 
         power_parser = AdjacencyPowersParser()
         layer_dims = list(map(int, FLAGS.hidden_dims_csv.split(',')))
-        print(layer_dims)
-        # --------- Our code --------- #
-        # layer_dims.append(2 * FLAGS.num_nodes)
-        # layer_dims.append(power_parser.output_capacity(dataset.ally.shape[1])) #TODO: Adapt/Remove to our problem setting
-        # --------- Our code -------- #
-        print(layer_dims)
+
         for j, dim in enumerate(layer_dims):
             if j != 0:
                 model.add_layer('tf.layers', 'dropout', FLAGS.layer_dropout,
                                 pass_training=True)
             capacities = power_parser.divide_capacity(j, dim)
-            print(' >>>> the layer is:' + str(j) + ' capacitities: ' + str(capacities))
-            print(power_parser.powers())
             model.add_layer('self', 'mixhop_layer', power_parser.powers(), capacities,
                             layer_id=j, pass_kernel_regularizer=True)
-            print('<<<< Mixhop layer for layer ' + str(j))
 
             if j != len(layer_dims) - 1:
                 model.add_layer('tf.contrib.layers', 'batch_norm')
                 model.add_layer('tf.nn', FLAGS.nonlinearity)
 
-        # model.add_layer('mixhop_model', 'psum_output_layer', dataset.ally.shape[1])
-
-        # --------- Our Code ----------#
         model.add_layer('mixhop_model', 'reorder', create_dim_inds(
             power_parser.divide_capacity(len(layer_dims) - 1, layer_dims[-1])))  # TODO: Verify the capacity
         model.add_layer('mixhop_model', 'decoder_layer')
-        # -------- Our Code ----------#
 
     net = model.activations[-1]  # TODO: check this output
 
     ### TRAINING.
     sliced_output = net  # tf.gather(net, ph_indices)
-
-
-    # ------------------ Our code ----------------- #
     A1 = sliced_output[:, :net.shape[1] // 2]
     A1 = tf.reshape(A1, [A1.shape[0], A1.shape[0]])
     A2 = sliced_output[:, net.shape[1] // 2:]
@@ -310,7 +294,7 @@ def main(unused_argv):
   # 9630.0 2090.0 7756.0
 
   ### MODEL REQUIREMENTS (Placeholders, adjacency tensor, regularizers)
-  x_ph = tf.sparse_placeholder(tf.float32, [FLAGS.num_nodes, 4], name='x') # dataset.get_next_batch() #TODO: check the shape
+  x_ph = tf.sparse_placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_features], name='x') # dataset.get_next_batch() #TODO: check the shape
   sparse_adj_ph = tf.sparse_placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_nodes], name='sparse_adj') #dataset.sparse_adj_tensor() #TODO: check it to be placeholder, shape, sparsity
   y1_ph = tf.placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_nodes], name='y1') #TODO: check the shape of placeholder
   y2_ph = tf.placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_nodes], name='y2') #TODO: check the shape of placeholder
@@ -321,8 +305,7 @@ def main(unused_argv):
   is_training = tf.placeholder_with_default(True, [], name='is_training')
 
   pows_parser = AdjacencyPowersParser()  # Parses flag --adj_pows
- # num_x_entries = dataset.x_indices.shape[0] #TODO: Ask Nazanin
-  num_x_entries = tf.constant(8000)
+  num_x_entries = tf.constant(FLAGS.num_nodes * FLAGS.num_features)
 
   kernel_regularizer = CombinedRegularizer(FLAGS.l2reg, FLAGS.l2reg) #  keras_regularizers.l2(FLAGS.l2reg)
   
@@ -335,8 +318,7 @@ def main(unused_argv):
   # label_loss += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y2_ph, logits=A2))
   label_loss = masked_softmax_cross_entropy(A1, y1_ph, mask_ph)
   label_loss += masked_softmax_cross_entropy(A2, y2_ph, mask_ph)
-  
-  # ---------------- Our code ------------------ #
+
 
   # label_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=y, logits=sliced_output))
   tf.losses.add_loss(label_loss)
@@ -356,22 +338,6 @@ def main(unused_argv):
   sess.run(tf.global_variables_initializer())
 
 
- ## TODO: change the training loop structure
-  ### PREPARE FOR TRAINING
-  # Get indices of {train, validate, test} nodes.
-  # num_train_nodes = None
-  # if FLAGS.num_train_nodes > 0:
-  #   num_train_nodes = FLAGS.num_train_nodes
-  # else:
-  #   num_train_nodes = -1 * FLAGS.num_train_nodes * dataset.ally.shape[1]
-  #
-  # train_indices, validate_indices, test_indices = dataset.get_partition_indices(
-  #     num_train_nodes, FLAGS.num_validate_nodes)
-
-  # train_indices = range(num_train_nodes)
-
-  # feed_dict = {y: dataset.ally[train_indices]}
-  # dataset.populate_feed_dict(feed_dict)
   LAST_STEP = collections.Counter()
   accuracy_monitor = AccuracyMonitor(sess, FLAGS.early_stop_steps)
 
@@ -399,7 +365,6 @@ def main(unused_argv):
 
 
   def step(dataset, lr=None, columns=None):
-    # print('==================Next Step=======================')
     i = LAST_STEP['step']
     LAST_STEP['step'] += 1
     # i = dataset.get_next_batch()
@@ -407,12 +372,6 @@ def main(unused_argv):
     print ("mask batch sum = ", mask_batch.sum())
     print ("mask batch shape = ", mask_batch.shape)
 
-    # print (type(x_batch), type(adj_batch), type(y1_batch), type(y2_batch))
-
-
-
-    # import IPython
-    # IPython.embed()
 
     feed_dict = construct_feed_dict(lr, True, x_batch, adj_batch, y1_batch, y2_batch, mask_batch)
     # import IPython; IPython.embed()
@@ -457,13 +416,16 @@ def main(unused_argv):
     #   return True
     # else:
     #     print('Early stopping')
-    return True
+    return True, loss_value
 
   ### TRAINING LOOP
   lr = FLAGS.learn_rate
   lr_decrement = FLAGS.lr_decrement_ratio_of_initial * FLAGS.learn_rate
+  loss_arr = []
   for i in range(FLAGS.num_train_steps):
-    if not step(dataset, lr=lr):
+    keep_going, loss_val = step(dataset, lr=lr)
+    loss_arr.append(loss_val)
+    if not keep_going:
       break
 
     if i > 0 and i % FLAGS.lr_decrement_every == 0:
@@ -475,18 +437,22 @@ def main(unused_argv):
     os.makedirs(FLAGS.results_dir)
   if not os.path.exists(FLAGS.train_dir):
     os.makedirs(FLAGS.train_dir)
-  with open(output_results_file, 'w') as fout:
-    results = {
-        'at_best_validate': accuracy_monitor.best,
-        'current': accuracy_monitor.curr_accuracy,
-    }
-    fout.write(json.dumps(results))
+  # with open(output_results_file, 'w') as fout:
+  #   results = {
+  #       'at_best_validate': accuracy_monitor.best,
+  #       'current': accuracy_monitor.curr_accuracy,
+  #   }
+  #   fout.write(json.dumps(results))
+  #
+  # with open(output_model_file, 'wb') as fout:
+  #   pickle.dump(accuracy_monitor.params_at_best, fout)
+  # print('Wrote model to ' + output_model_file)
+  # print('Wrote results to ' + output_results_file)
 
-  with open(output_model_file, 'wb') as fout:
-    pickle.dump(accuracy_monitor.params_at_best, fout)
-  print('Wrote model to ' + output_model_file)
-  print('Wrote results to ' + output_results_file)
-
-
+  plt.plot(loss_arr, '.')
+  plt.show()
+    # Test data
+  import IPython
+  IPython.embed()
 if __name__ == '__main__':
   app.run(main)
