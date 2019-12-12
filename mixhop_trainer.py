@@ -326,7 +326,7 @@ def main(unused_argv):
   ### BUILD MODEL
   A1, A2, model = build_model(sparse_adj_ph, x_ph, is_training, kernel_regularizer, num_x_entries)
   model.show_model_info()
-  
+
   learn_rate = tf.placeholder(tf.float32, [], 'learn_rate')
   label_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y1_ph, logits=A1))
   label_loss += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y2_ph, logits=A2))
@@ -366,7 +366,6 @@ def main(unused_argv):
 
   # feed_dict = {y: dataset.ally[train_indices]}
   # dataset.populate_feed_dict(feed_dict)
-  feed_dict = {}
   LAST_STEP = collections.Counter()
   accuracy_monitor = AccuracyMonitor(sess, FLAGS.early_stop_steps)
 
@@ -374,23 +373,40 @@ def main(unused_argv):
   # accuracy_monitor to keep track of test accuracy and parameters @ best
   # validation accuracy
 
+
+  def construct_feed_dict(lr, is_tr, x_batch, adj_batch, y1_batch = None, y2_batch = None):
+      feed_dict = {}
+
+      feed_dict[is_training] = is_tr
+      if lr is not None:
+        feed_dict[learn_rate] = lr
+
+      feed_dict[x_ph.indices], feed_dict[x_ph.values] = x_batch.indices, x_batch.values
+      feed_dict[sparse_adj_ph.indices], feed_dict[sparse_adj_ph.values] = adj_batch.indices, adj_batch.values
+
+      if is_tr == True:
+        feed_dict[y1_ph] = y1_batch
+        feed_dict[y2_ph] = y2_batch
+      
+      return feed_dict 
+
+
   def step(dataset, lr=None, columns=None):
     print('==================Next Step=======================')
-    if lr is not None:
-      feed_dict[learn_rate] = lr
     i = LAST_STEP['step']
     LAST_STEP['step'] += 1
-    feed_dict[is_training] = True
     # i = dataset.get_next_batch()
     x_batch, adj_batch, y1_batch, y2_batch = dataset.get_next_batch()
 
     print (type(x_batch), type(adj_batch), type(y1_batch), type(y2_batch))
 
 
+
     # import IPython
     # IPython.embed()
 
-    feed_dict[x_ph], feed_dict[sparse_adj_ph], feed_dict[y1_ph], feed_dict[y2_ph] = x_batch, adj_batch, y1_batch, y2_batch
+    feed_dict = construct_feed_dict(lr, True, x_batch, adj_batch, y1_batch, y2_batch)
+    # import IPython; IPython.embed()
 
     # Train step
     train_preds_A1, train_preds_A2, loss_value, _ = sess.run((A1, A2, label_loss, train_op), feed_dict = feed_dict)
