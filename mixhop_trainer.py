@@ -273,7 +273,7 @@ def build_model(sparse_adj, x, is_training, kernel_regularizer, num_x_entries):
 
         # --------- Our Code ----------#
         model.add_layer('mixhop_model', 'reorder', create_dim_inds(
-            power_parser.divide_capacity(len(layer_dims) - 2, layer_dims[-2])))  # TODO: Verify the capacity
+            power_parser.divide_capacity(len(layer_dims) - 1, layer_dims[-1])))  # TODO: Verify the capacity
         model.add_layer('mixhop_model', 'decoder_layer')
         # -------- Our Code ----------#
 
