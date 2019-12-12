@@ -7,24 +7,11 @@ import scipy.sparse as sp
 import tensorflow as tf
 from utils import *
 
+def convert_sparse_matrix_to_sparse_tensor(X):
+    coo = X.tocoo()
+    indices = np.mat([coo.row, coo.col]).transpose()
+    return tf.SparseTensorValue(indices, coo.data, coo.shape)
 
-def sparse_to_tuple(sparse_mx):
-    """Convert sparse matrix to tuple representation."""
-    def to_tuple(mx):
-        if not sp.isspmatrix_coo(mx):
-            mx = mx.tocoo()
-        coords = np.vstack((mx.row, mx.col)).transpose()
-        values = mx.data
-        shape = mx.shape
-        return coords, values, shape
-
-    if isinstance(sparse_mx, list):
-        for i in range(len(sparse_mx)):
-            sparse_mx[i] = to_tuple(sparse_mx[i])
-    else:
-        sparse_mx = to_tuple(sparse_mx)
-
-    return sparse_mx
 
 def concatenate_csr_matrices_by_rows(matrix1, matrix2):
   """Concatenates sparse csr matrices matrix1 above matrix2.
@@ -212,6 +199,6 @@ class Dataset(object):
     # IPython.embed()
 
 
-    return sparse_to_tuple(self.sparse_feature_tensor()), sparse_to_tuple(self.adj), np.array(self.featbased.todense()), np.array(self.structural.todense())
+    return convert_sparse_matrix_to_sparse_tensor(self.sparse_feature_tensor()), convert_sparse_matrix_to_sparse_tensor(self.adj), np.array(self.featbased.todense()), np.array(self.structural.todense())
 
 
