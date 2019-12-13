@@ -277,16 +277,49 @@ def build_model(sparse_adj, x, is_training, kernel_regularizer, num_x_entries):
 
     return A1, A2, model
 
+def evaluate_model(A1, A2, y1_ph, y2_ph, mask_ph):
+    y1_weight = (tf.math.reduce_sum(mask_ph) - tf.math.reduce_sum(y1_ph)) / tf.math.reduce_sum(y1_ph)
+    y2_weight = (tf.math.reduce_sum(mask_ph) - tf.math.reduce_sum(y2_ph)) / tf.math.reduce_sum(y2_ph)
+
+    label_loss = masked_softmax_cross_entropy(A1, y1_ph, mask_ph, y1_weight)
+    label_loss += masked_softmax_cross_entropy(A2, y2_ph, mask_ph, y2_weight)
+
+    correct_prediction1 = tf.equal(tf.cast(tf.greater_equal(tf.sigmoid(A1), 0.5), tf.int32), tf.cast(y1_ph, tf.int32))
+    acc1 = tf.reduce_mean(tf.cast(correct_prediction1, tf.float32))
+
+    correct_prediction2 = tf.equal(tf.cast(tf.greater_equal(tf.sigmoid(A2), 0.5), tf.int32), tf.cast(y2_ph, tf.int32))
+    acc2 = tf.reduce_mean(tf.cast(correct_prediction2, tf.float32))
+    return label_loss, acc1, acc2
+
+
+def save_model(acc_monitor):
+    encoded_params = GetEncodedParams()
+    output_results_file = os.path.join(
+        FLAGS.results_dir, encoded_params + '.json')
+    output_model_file = os.path.join(
+        FLAGS.train_dir, encoded_params + '.pkl')
+    if os.path.exists(output_results_file) and not FLAGS.retrain:
+        print('Exiting early. Results are already computed: %s. Pass flag '
+              '--retrain to override' % output_results_file)
+        return
+    if not os.path.exists(FLAGS.results_dir):
+        os.makedirs(FLAGS.results_dir)
+    if not os.path.exists(FLAGS.train_dir):
+        os.makedirs(FLAGS.train_dir)
+    with open(output_results_file, 'w') as fout:
+        results = {
+            'at_best_validate': acc_monitor.best,
+            'current': acc_monitor.curr_accuracy,
+        }
+        fout.write(json.dumps(results))
+
+    with open(output_model_file, 'wb') as fout:
+        pickle.dump(acc_monitor.params_at_best, fout)
+    print('Wrote model to ' + output_model_file)
+    print('Wrote results to ' + output_results_file)
+
+
 def main(unused_argv):
-  encoded_params = GetEncodedParams()
-  output_results_file = os.path.join(
-      FLAGS.results_dir, encoded_params + '.json')
-  output_model_file = os.path.join(
-      FLAGS.train_dir, encoded_params + '.pkl')
-  if os.path.exists(output_results_file) and not FLAGS.retrain:
-    print('Exiting early. Results are already computed: %s. Pass flag '
-          '--retrain to override' % output_results_file)
-    return 0
 
   ### LOAD DATASET
   dataset = mixhop_dataset.ReadDataset(FLAGS.dataset_dir, FLAGS.dataset_name)
@@ -299,41 +332,18 @@ def main(unused_argv):
   y1_ph = tf.placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_nodes], name='y1') #TODO: check the shape of placeholder
   y2_ph = tf.placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_nodes], name='y2') #TODO: check the shape of placeholder
   mask_ph = tf.placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_nodes], name='mask') #TODO: check the shape of placeholder
-  # TODO: load y1, y2 here for as edges in A1, A2
-
-  # ph_indices = tf.placeholder(tf.int64, [None])
   is_training = tf.placeholder_with_default(True, [], name='is_training')
 
   pows_parser = AdjacencyPowersParser()  # Parses flag --adj_pows
   num_x_entries = tf.constant(FLAGS.num_nodes * FLAGS.num_features)
-
   kernel_regularizer = CombinedRegularizer(FLAGS.l2reg, FLAGS.l2reg) #  keras_regularizers.l2(FLAGS.l2reg)
-  
+
+
   ### BUILD MODEL
   A1, A2, model = build_model(sparse_adj_ph, x_ph, is_training, kernel_regularizer, num_x_entries)
   model.show_model_info()
-
   learn_rate = tf.placeholder(tf.float32, [], 'learn_rate')
-  # label_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y1_ph, logits=A1))
-  # label_loss += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y2_ph, logits=A2))
-  y1_weight = (tf.math.reduce_sum(mask_ph) - tf.math.reduce_sum(y1_ph)) / tf.math.reduce_sum(y1_ph)
-  y2_weight = (tf.math.reduce_sum(mask_ph) - tf.math.reduce_sum(y2_ph)) / tf.math.reduce_sum(y2_ph)
-
-  label_loss = masked_softmax_cross_entropy(A1, y1_ph, mask_ph, y1_weight)
-  label_loss += masked_softmax_cross_entropy(A2, y2_ph, mask_ph, y2_weight)
-
-  correct_prediction1 = tf.equal(tf.cast(tf.greater_equal(tf.sigmoid(A1), 0.5), tf.int32), tf.cast(y1_ph, tf.int32))
-  acc1 = tf.reduce_mean(tf.cast(correct_prediction1, tf.float32))
-
-  correct_prediction2 = tf.equal(tf.cast(tf.greater_equal(tf.sigmoid(A2), 0.5), tf.int32), tf.cast(y2_ph, tf.int32))
-  acc2 = tf.reduce_mean(tf.cast(correct_prediction2, tf.float32))
-
-  
-  # import IPython
-  # IPython.embed()
-  # ---------------- Our code ------------------ #
-
-  # label_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=y, logits=sliced_output))
+  label_loss, acc1, acc2 = evaluate_model(A1, A2, y1_ph, y2_ph, mask_ph)
   tf.losses.add_loss(label_loss)
   loss = tf.losses.get_total_loss()
   
@@ -349,8 +359,6 @@ def main(unused_argv):
   # Now that the graph is frozen
   sess = tf.Session()
   sess.run(tf.global_variables_initializer())
-
-
   LAST_STEP = collections.Counter()
   accuracy_monitor = AccuracyMonitor(sess, FLAGS.early_stop_steps)
 
@@ -369,12 +377,12 @@ def main(unused_argv):
       feed_dict[x_ph.indices], feed_dict[x_ph.values] = x_batch.indices, x_batch.values
       feed_dict[sparse_adj_ph.indices], feed_dict[sparse_adj_ph.values] = adj_batch.indices, adj_batch.values
 
-      if is_tr == True:
-        feed_dict[y1_ph] = y1_batch
-        feed_dict[y2_ph] = y2_batch
-        feed_dict[mask_ph] = mask_batch
+  # if is_tr == True:
+      feed_dict[y1_ph] = y1_batch
+      feed_dict[y2_ph] = y2_batch
+      feed_dict[mask_ph] = mask_batch
       
-      return feed_dict 
+      return feed_dict
 
 
   def step(dataset, lr=None, columns=None):
@@ -404,7 +412,7 @@ def main(unused_argv):
     #TODO: add validation set -> monitor accuracy here
     x_dev, adj_dev, y1_dev, y2_dev, mask_dev = dataset.get_next_batch() #TODO: for nazanin - a developement set is required
     feed_dict = construct_feed_dict(lr, False, x_dev, adj_dev, y1_dev, y2_dev, mask_dev)
-    _, _, _, _, a1, a2 = sess.run((A1, A2, label_loss, train_op, acc1, acc2), feed_dict=feed_dict)
+    _, _, _, a1, a2 = sess.run((A1, A2, train_op, acc1, acc2), feed_dict=feed_dict)
     keep_going = accuracy_monitor.mark_accuracy(a1 + a2,  a1 + a2, i)
     #
     # print('%i. (loss=%g). Acc: train=%f val=%f test=%f  (@ best val test=%f)' % (
@@ -435,21 +443,7 @@ def main(unused_argv):
       if lr <= 0:
         break
 
-  if not os.path.exists(FLAGS.results_dir):
-    os.makedirs(FLAGS.results_dir)
-  if not os.path.exists(FLAGS.train_dir):
-    os.makedirs(FLAGS.train_dir)
-  with open(output_results_file, 'w') as fout:
-    results = {
-        'at_best_validate': accuracy_monitor.best,
-        'current': accuracy_monitor.curr_accuracy,
-    }
-    fout.write(json.dumps(results))
-
-  with open(output_model_file, 'wb') as fout:
-    pickle.dump(accuracy_monitor.params_at_best, fout)
-  print('Wrote model to ' + output_model_file)
-  print('Wrote results to ' + output_results_file)
+  save_model(accuracy_monitor)
 
 
   print(accuracy_monitor.best)
@@ -459,7 +453,18 @@ def main(unused_argv):
   plt.show()
   plt.plot(loss_arr, 'g+')
   plt.show()
+
+  ## Test data
+  ops = [v.assign(accuracy_monitor.params_at_best[v.name]) for v in tf.global_variables()]
+  sess.run(ops)
     # Test data
+  x_batch, adj_batch, y1_batch, y2_batch, mask_batch = dataset.get_next_batch()
+  feed_dict = construct_feed_dict(lr, False, x_batch, adj_batch, y1_batch, y2_batch, mask_batch)
+  train_preds_A1, train_preds_A2, loss_value, _, a1, a2= sess.run((A1, A2, label_loss, train_op, acc1, acc2), feed_dict = feed_dict)
+  pr_1 = np.mean(np.abs(y1_batch - np.where(mask_batch, train_preds_A1, 0)))
+  pr_2 = np.mean(np.abs(y2_batch - np.where(mask_batch, train_preds_A2, 0)))
+  print("Loss = {0:.2f}, Train distance to label A1 = {1:.5f}, Train distance to label A2 = {2:.5f}".format(loss_value, pr_1, pr_2))
+  print("\t acc1 = {0:.4f}, acc2 = {1:.4f}".format(a1, a2))
   import IPython
   IPython.embed()
 if __name__ == '__main__':
