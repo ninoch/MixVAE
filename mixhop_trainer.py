@@ -239,7 +239,7 @@ def create_dim_inds(dim_list):
 def build_model(sparse_adj, x, is_training, kernel_regularizer, num_x_entries):
     model = mixhop_model.MixHopModel(
         sparse_adj, x, is_training, kernel_regularizer)
-    if FLAGS.architecture:
+    if False: # FLAGS.architecture:
         model.load_architecture_from_file(FLAGS.architecture)
     else:
         model.add_layer('mixhop_model', 'sparse_dropout', FLAGS.input_dropout,
@@ -413,14 +413,14 @@ def main(unused_argv):
       print('NaN value reached. Debug please.')
       import IPython; IPython.embed()
 
-    print ("sum A1: ", np.where(mask_batch, train_preds_A1, 0).sum())
-    print ("sum A2: ", np.where(mask_batch, train_preds_A2, 0).sum())
+    masked_A1 = np.where(mask_batch, train_preds_A1, 0)
+    masked_A2 = np.where(mask_batch, train_preds_A2, 0)
 
-    pr_1 = np.mean(np.abs(y1_batch - np.where(mask_batch, train_preds_A1, 0)))
-    pr_2 = np.mean(np.abs(y2_batch - np.where(mask_batch, train_preds_A2, 0)))
+    print ("Loss = {0:.2f}".format(loss_value), )
+    print ("\t acc1 = {0:.4f}, acc2 = {1:.4f}".format(a1, a2), )
+    print ("\t A1: +={}, -={}".format(np.sum(np.array(masked_A1) > 0), np.sum(np.array(masked_A1) < 0)), )
+    print ("\t A2: +={}, -={}".format(np.sum(np.array(masked_A2) > 0), np.sum(np.array(masked_A2) < 0)))
 
-    print ("Loss = {0:.2f}, Train distance to label A1 = {1:.5f}, Train distance to label A2 = {2:.5f}".format(loss_value, pr_1, pr_2))
-    print ("\t acc1 = {0:.4f}, acc2 = {1:.4f}".format(a1, a2))
 
     #TODO: add validation set -> monitor accuracy here
     x_dev, adj_dev, y1_dev, y2_dev, mask_dev = eval_dataset.get_next_batch() #TODO: for nazanin - a developement set is required
