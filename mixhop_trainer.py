@@ -285,10 +285,15 @@ def evaluate_model(A1, A2, y1_ph, y2_ph, mask_ph):
     label_loss += masked_softmax_cross_entropy(A2, y2_ph, mask_ph, y2_weight)
 
     correct_prediction1 = tf.equal(tf.cast(tf.greater_equal(tf.sigmoid(A1), 0.5), tf.int32), tf.cast(y1_ph, tf.int32))
-    acc1 = tf.reduce_mean(tf.cast(correct_prediction1, tf.float32))
+    correct_prediction1 = tf.cast(correct_prediction1, tf.float32) 
+    correct_prediction1 *= (mask_ph / tf.reduce_mean(mask_ph))
+    acc1 = tf.reduce_mean(correct_prediction1)
 
     correct_prediction2 = tf.equal(tf.cast(tf.greater_equal(tf.sigmoid(A2), 0.5), tf.int32), tf.cast(y2_ph, tf.int32))
-    acc2 = tf.reduce_mean(tf.cast(correct_prediction2, tf.float32))
+    correct_prediction2 = tf.cast(correct_prediction2, tf.float32) 
+    correct_prediction2 *= (mask_ph / tf.reduce_mean(mask_ph))
+    acc2 = tf.reduce_mean(correct_prediction2)
+
     return label_loss, acc1, acc2
 
 
@@ -449,9 +454,12 @@ def main(unused_argv):
   print(accuracy_monitor.best)
   plt.plot(acc1_arr, 'b-')
   plt.plot(acc2_arr, 'r.')
-
+  plt.xlabel('epoch')
+  plt.ylabel('accuracy')
   plt.show()
   plt.plot(loss_arr, 'g+')
+  plt.xlabel('epoch')
+  plt.ylabel('loss')
   plt.show()
 
   ## Test data
