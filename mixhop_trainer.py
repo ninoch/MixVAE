@@ -331,6 +331,14 @@ def main(unused_argv):
   dataset.show_info()
   # 9630.0 2090.0 7756.0
 
+  eval_dataset = mixhop_dataset.ReadDataset(FLAGS.dataset_dir, 'eval')
+  eval_dataset.show_info()
+
+
+  test_dataset = mixhop_dataset.ReadDataset(FLAGS.dataset_dir, 'test')
+  test_dataset.show_info()
+
+
   ### MODEL REQUIREMENTS (Placeholders, adjacency tensor, regularizers)
   x_ph = tf.sparse_placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_features], name='x') # dataset.get_next_batch() #TODO: check the shape
   sparse_adj_ph = tf.sparse_placeholder(tf.float32, [FLAGS.num_nodes, FLAGS.num_nodes], name='sparse_adj') #dataset.sparse_adj_tensor() #TODO: check it to be placeholder, shape, sparsity
@@ -415,7 +423,7 @@ def main(unused_argv):
     print ("\t acc1 = {0:.4f}, acc2 = {1:.4f}".format(a1, a2))
 
     #TODO: add validation set -> monitor accuracy here
-    x_dev, adj_dev, y1_dev, y2_dev, mask_dev = dataset.get_next_batch() #TODO: for nazanin - a developement set is required
+    x_dev, adj_dev, y1_dev, y2_dev, mask_dev = eval_dataset.get_next_batch() #TODO: for nazanin - a developement set is required
     feed_dict = construct_feed_dict(lr, False, x_dev, adj_dev, y1_dev, y2_dev, mask_dev)
     _, _, _, a1, a2 = sess.run((A1, A2, train_op, acc1, acc2), feed_dict=feed_dict)
     keep_going = accuracy_monitor.mark_accuracy(a1 + a2,  a1 + a2, i)
@@ -466,7 +474,7 @@ def main(unused_argv):
   ops = [v.assign(accuracy_monitor.params_at_best[v.name]) for v in tf.global_variables()]
   sess.run(ops)
     # Test data
-  x_batch, adj_batch, y1_batch, y2_batch, mask_batch = dataset.get_next_batch()
+  x_batch, adj_batch, y1_batch, y2_batch, mask_batch = test_dataset.get_next_batch()
   feed_dict = construct_feed_dict(lr, False, x_batch, adj_batch, y1_batch, y2_batch, mask_batch)
   train_preds_A1, train_preds_A2, loss_value, _, a1, a2= sess.run((A1, A2, label_loss, train_op, acc1, acc2), feed_dict = feed_dict)
   pr_1 = np.mean(np.abs(y1_batch - np.where(mask_batch, train_preds_A1, 0)))
