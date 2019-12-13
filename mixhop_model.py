@@ -48,6 +48,34 @@ def reorder(z, dim_inds):
   print ('this is shape of combined: ', combined.shape)
   return combined
 
+def dense_flow(z):
+  a1 = z[:, :z.shape[1]//2]
+  a2 = z[:, z.shape[1]//2:]
+  a1_mean = tf.layers.dense(a1, z.shape[1]//2)
+  a1_log_sigma = tf.layers.dense(a1, z.shape[1]//2)
+  a1_normal = tf.concat([a1_mean, a1_log_sigma], axis=1)
+  a2_mean = tf.layers.dense(a2, z.shape[1]//2)
+  a2_log_sigma = tf.layers.dense(a2, z.shape[1]//2)
+  a2_normal = tf.concat([a2_mean, a2_log_sigma], axis=1)
+  z_tmp = tf.concat([a1_normal, a2_normal], axis=1)
+  return z_tmp
+
+def _sample_z(z_mean, z_log_sigma_sq):
+    eps_shape = tf.shape(z_mean)
+    eps = tf.random_normal(eps_shape, 0, 1, dtype=tf.float32 )
+    # z = mu + sigma * epsilon
+    z = tf.add(z_mean,
+               tf.multiply(tf.sqrt(tf.exp(z_log_sigma_sq)), eps))
+    return z
+
+def sample(z_var):
+  a1 = z_var[:, :z_var.shape[1]//2]
+  a2 = z_var[:, z_var.shape[1]//2:]
+  a1_sample = _sample_z(a1[:, :z_var.shape[1]//4], a1[:, z_var.shape[1]//4:])
+  a2_sample = _sample_z(a2[:, :z_var.shape[1]//4], a2[:, z_var.shape[1]//4:])
+  return tf.concat([a1_sample, a2_sample], axis=1)
+
+
 def decode(z):
   x_t = tf.transpose(z)
   x_t = tf.matmul(z, x_t)
