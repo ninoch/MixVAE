@@ -331,11 +331,11 @@ def main(unused_argv):
   dataset.show_info()
   # 9630.0 2090.0 7756.0
 
-  eval_dataset = mixhop_dataset.ReadDataset(FLAGS.dataset_dir, 'eval')
+  eval_dataset = mixhop_dataset.ReadDataset(FLAGS.dataset_dir, 'sim_eval')
   eval_dataset.show_info()
 
 
-  test_dataset = mixhop_dataset.ReadDataset(FLAGS.dataset_dir, 'test')
+  test_dataset = mixhop_dataset.ReadDataset(FLAGS.dataset_dir, 'sim_test')
   test_dataset.show_info()
 
 
@@ -421,7 +421,6 @@ def main(unused_argv):
     print ("\t A1: +={}, -={}".format(np.sum(np.array(masked_A1) > 0), np.sum(np.array(masked_A1) < 0)), )
     print ("\t A2: +={}, -={}".format(np.sum(np.array(masked_A2) > 0), np.sum(np.array(masked_A2) < 0)))
 
-
     #TODO: add validation set -> monitor accuracy here
     x_dev, adj_dev, y1_dev, y2_dev, mask_dev = eval_dataset.get_next_batch() #TODO: for nazanin - a developement set is required
     feed_dict = construct_feed_dict(lr, False, x_dev, adj_dev, y1_dev, y2_dev, mask_dev)
@@ -445,6 +444,12 @@ def main(unused_argv):
   acc2_arr = []
   for i in range(FLAGS.num_train_steps):
     keep_going, loss_val, ac1, ac2 = step(dataset, lr=lr)
+    if i == 40:
+      x_batch, adj_batch, y1_batch, y2_batch, mask_batch = dataset.get_next_batch()
+      feed_dict = construct_feed_dict(lr, True, x_batch, adj_batch, y1_batch, y2_batch, mask_batch) 
+      z = sess.run(model.activations[-3], feed_dict=feed_dict)
+      import IPython; IPython.embed()
+
     loss_arr.append(loss_val)
     acc1_arr.append(ac1)
     acc2_arr.append(ac2)
