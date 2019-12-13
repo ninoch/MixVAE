@@ -380,16 +380,9 @@ def main(unused_argv):
   def step(dataset, lr=None, columns=None):
     i = LAST_STEP['step']
     LAST_STEP['step'] += 1
-    # i = dataset.get_next_batch()
+
     x_batch, adj_batch, y1_batch, y2_batch, mask_batch = dataset.get_next_batch()
-  
-
-    # print ("mask batch sum = ", mask_batch.sum())
-    # print ("mask batch shape = ", mask_batch.shape)
-
-
     feed_dict = construct_feed_dict(lr, True, x_batch, adj_batch, y1_batch, y2_batch, mask_batch)
-    # import IPython; IPython.embed()
 
     # Train step
     train_preds_A1, train_preds_A2, loss_value, _, a1, a2= sess.run((A1, A2, label_loss, train_op, acc1, acc2), feed_dict = feed_dict)
@@ -402,13 +395,6 @@ def main(unused_argv):
     print ("sum A1: ", np.where(mask_batch, train_preds_A1, 0).sum())
     print ("sum A2: ", np.where(mask_batch, train_preds_A2, 0).sum())
 
-    train_accuracy_A1 = np.mean(np.where(mask_batch, train_preds_A1, 0) == y1_ph) #TODO: change the argmax part
-    train_accuracy_A2 = np.mean(np.where(mask_batch, train_preds_A2, 0) == y2_ph) #TODO: change the argmax part
-
-
-
-    # print ("accuracy1 = {0:.5f} accuracy 2 = {1:.5f}".format(accuracy1, accuracy2))
-
     pr_1 = np.mean(np.abs(y1_batch - np.where(mask_batch, train_preds_A1, 0)))
     pr_2 = np.mean(np.abs(y2_batch - np.where(mask_batch, train_preds_A2, 0)))
 
@@ -416,18 +402,10 @@ def main(unused_argv):
     print ("\t acc1 = {0:.4f}, acc2 = {1:.4f}".format(a1, a2))
 
     #TODO: add validation set -> monitor accuracy here
-
-    # feed_dict[is_training] = False
-    # feed_dict[ph_indices] = test_indices # TODO: change to get the next batch
-    # test_preds = sess.run(sliced_output, feed_dict)
-    # test_accuracy = numpy.mean(
-    #     test_preds.argmax(axis=1) == dataset.ally[test_indices].argmax(axis=1))
-    # feed_dict[ph_indices] = validate_indices  # TODO: change to the next batch
-    # validate_preds = sess.run(sliced_output, feed_dict)
-    # validate_accuracy = numpy.mean(
-    #     validate_preds.argmax(axis=1) == dataset.ally[validate_indices].argmax(axis=1))
-    #
-    # keep_going = accuracy_monitor.mark_accuracy(validate_accuracy, test_accuracy, i)
+    x_dev, adj_dev, y1_dev, y2_dev, mask_dev = dataset.get_next_batch() #TODO: for nazanin - a developement set is required
+    feed_dict = construct_feed_dict(lr, False, x_dev, adj_dev, y1_dev, y2_dev, mask_dev)
+    _, _, _, _, a1, a2 = sess.run((A1, A2, label_loss, train_op, acc1, acc2), feed_dict=feed_dict)
+    keep_going = accuracy_monitor.mark_accuracy(a1 + a2,  a1 + a2, i)
     #
     # print('%i. (loss=%g). Acc: train=%f val=%f test=%f  (@ best val test=%f)' % (
     #     i, loss_value, train_accuracy, validate_accuracy, test_accuracy,
@@ -436,15 +414,19 @@ def main(unused_argv):
     #   return True
     # else:
     #     print('Early stopping')
-    return True, loss_value
+    return keep_going, loss_value, a1, a2
 
   ### TRAINING LOOP
   lr = FLAGS.learn_rate
   lr_decrement = FLAGS.lr_decrement_ratio_of_initial * FLAGS.learn_rate
   loss_arr = []
+  acc1_arr = []
+  acc2_arr = []
   for i in range(FLAGS.num_train_steps):
-    keep_going, loss_val = step(dataset, lr=lr)
+    keep_going, loss_val, ac1, ac2 = step(dataset, lr=lr)
     loss_arr.append(loss_val)
+    acc1_arr.append(ac1)
+    acc2_arr.append(ac2)
     if not keep_going:
       break
 
@@ -457,19 +439,25 @@ def main(unused_argv):
     os.makedirs(FLAGS.results_dir)
   if not os.path.exists(FLAGS.train_dir):
     os.makedirs(FLAGS.train_dir)
-  # with open(output_results_file, 'w') as fout:
-  #   results = {
-  #       'at_best_validate': accuracy_monitor.best,
-  #       'current': accuracy_monitor.curr_accuracy,
-  #   }
-  #   fout.write(json.dumps(results))
-  #
-  # with open(output_model_file, 'wb') as fout:
-  #   pickle.dump(accuracy_monitor.params_at_best, fout)
-  # print('Wrote model to ' + output_model_file)
-  # print('Wrote results to ' + output_results_file)
+  with open(output_results_file, 'w') as fout:
+    results = {
+        'at_best_validate': accuracy_monitor.best,
+        'current': accuracy_monitor.curr_accuracy,
+    }
+    fout.write(json.dumps(results))
 
-  plt.plot(loss_arr, '.')
+  with open(output_model_file, 'wb') as fout:
+    pickle.dump(accuracy_monitor.params_at_best, fout)
+  print('Wrote model to ' + output_model_file)
+  print('Wrote results to ' + output_results_file)
+
+
+  print(accuracy_monitor.best)
+  plt.plot(acc1_arr, 'b-')
+  plt.plot(acc2_arr, 'r.')
+
+  plt.show()
+  plt.plot(loss_arr, 'g+')
   plt.show()
     # Test data
   import IPython
