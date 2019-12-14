@@ -236,7 +236,7 @@ def create_dim_inds(dim_list):
         offset += dim_list[i]
     return np.array(z1_inds), np.array(z2_inds)
 
-def build_model(sparse_adj, x, is_training, kernel_regularizer, num_x_entries):
+def build_model(sparse_adj, x, is_training, kernel_regularizer, num_x_entries, isVAE=False):
     model = mixhop_model.MixHopModel(
         sparse_adj, x, is_training, kernel_regularizer)
     if False: # FLAGS.architecture:
@@ -264,6 +264,9 @@ def build_model(sparse_adj, x, is_training, kernel_regularizer, num_x_entries):
 
         model.add_layer('mixhop_model', 'reorder', create_dim_inds(
             power_parser.divide_capacity(len(layer_dims) - 1, layer_dims[-1])))  # TODO: Verify the capacity
+        if isVAE:
+            model.add_layer('mixhop_model', 'dense_flow')
+            model.add_layer('mixhop_model', 'sample')
         model.add_layer('mixhop_model', 'decoder_layer')
 
     net = model.activations[-1]  # TODO: check this output
@@ -275,14 +278,28 @@ def build_model(sparse_adj, x, is_training, kernel_regularizer, num_x_entries):
     A2 = sliced_output[:, net.shape[1] // 2:]
     A2 = tf.reshape(A2, [A2.shape[0], A2.shape[0]])
 
-    return A1, A2, model
 
-def evaluate_model(A1, A2, y1_ph, y2_ph, mask_ph):
+    if isVAE: 
+      return A1, A2, model, model.activations[-3] # TODO: Check to see if it is Z! 
+    else:
+      return A1, A2, model
+
+
+def evaluate_model(A1, A2, y1_ph, y2_ph, mask_ph, isVAE=False, z_var=None):
     y1_weight = (tf.math.reduce_sum(mask_ph) - tf.math.reduce_sum(y1_ph)) / tf.math.reduce_sum(y1_ph)
     y2_weight = (tf.math.reduce_sum(mask_ph) - tf.math.reduce_sum(y2_ph)) / tf.math.reduce_sum(y2_ph)
 
     label_loss = masked_softmax_cross_entropy(A1, y1_ph, mask_ph, y1_weight)
     label_loss += masked_softmax_cross_entropy(A2, y2_ph, mask_ph, y2_weight)
+
+    if isVAE:
+      a1 = z_var[:, :z_var.shape[1]//2]
+      a2 = z_var[:, z_var.shape[1]//2:]
+      z1, std1 = a1[:, :z_var.shape[1]//4], a1[:, z_var.shape[1]//4:]
+      z2, std2 = a2[:, :z_var.shape[1]//4], a2[:, z_var.shape[1]//4:]
+
+      reg_loss =  -0.5 * tf.reduce_mean(tf.reduce_sum(1 + std1 - tf.square(z1) - tf.exp(std1), 1))
+      reg_loss += -0.5 * tf.reduce_mean(tf.reduce_sum(1 + std2 - tf.square(z2) - tf.exp(std2), 1))
 
     correct_prediction1 = tf.equal(tf.cast(tf.greater_equal(tf.sigmoid(A1), 0.5), tf.int32), tf.cast(y1_ph, tf.int32))
     correct_prediction1 = tf.cast(correct_prediction1, tf.float32) 
@@ -294,7 +311,11 @@ def evaluate_model(A1, A2, y1_ph, y2_ph, mask_ph):
     correct_prediction2 *= (mask_ph / tf.reduce_mean(mask_ph))
     acc2 = tf.reduce_mean(correct_prediction2)
 
-    return label_loss, acc1, acc2
+    if isVAE:
+      return label_loss + reg_loss, acc1, acc2
+    else:
+      return label_loss, acc1, acc2
+
 
 
 def save_model(acc_monitor):
@@ -353,10 +374,19 @@ def main(unused_argv):
 
 
   ### BUILD MODEL
-  A1, A2, model = build_model(sparse_adj_ph, x_ph, is_training, kernel_regularizer, num_x_entries)
+  isVAE = False
+  if isVAE:
+    A1, A2, model, z_var = build_model(sparse_adj_ph, x_ph, is_training, kernel_regularizer, num_x_entries, True)
+  else:
+    A1, A2, model = build_model(sparse_adj_ph, x_ph, is_training, kernel_regularizer, num_x_entries, False)
+
   model.show_model_info()
   learn_rate = tf.placeholder(tf.float32, [], 'learn_rate')
-  label_loss, acc1, acc2 = evaluate_model(A1, A2, y1_ph, y2_ph, mask_ph)
+  if isVAE:
+    label_loss, acc1, acc2 = evaluate_model(A1, A2, y1_ph, y2_ph, mask_ph, True, z_var)
+  else:
+    label_loss, acc1, acc2 = evaluate_model(A1, A2, y1_ph, y2_ph, mask_ph, False)
+
   tf.losses.add_loss(label_loss)
   loss = tf.losses.get_total_loss()
   
@@ -378,7 +408,6 @@ def main(unused_argv):
   # Step function makes a single update, prints accuracies, and invokes
   # accuracy_monitor to keep track of test accuracy and parameters @ best
   # validation accuracy
-
 
   def construct_feed_dict(lr, is_tr, x_batch, adj_batch, y1_batch = None, y2_batch = None, mask_batch=None):
       feed_dict = {}
@@ -424,7 +453,7 @@ def main(unused_argv):
     #TODO: add validation set -> monitor accuracy here
     x_dev, adj_dev, y1_dev, y2_dev, mask_dev = eval_dataset.get_next_batch() #TODO: for nazanin - a developement set is required
     feed_dict = construct_feed_dict(lr, False, x_dev, adj_dev, y1_dev, y2_dev, mask_dev)
-    _, _, _, a1, a2 = sess.run((A1, A2, train_op, acc1, acc2), feed_dict=feed_dict)
+    a1, a2 = sess.run((acc1, acc2), feed_dict=feed_dict)
     keep_going = accuracy_monitor.mark_accuracy(a1 + a2,  a1 + a2, i)
     #
     # print('%i. (loss=%g). Acc: train=%f val=%f test=%f  (@ best val test=%f)' % (
@@ -444,10 +473,10 @@ def main(unused_argv):
   acc2_arr = []
   for i in range(FLAGS.num_train_steps):
     keep_going, loss_val, ac1, ac2 = step(dataset, lr=lr)
-    if i == 40:
+    if i == 2000:
       x_batch, adj_batch, y1_batch, y2_batch, mask_batch = dataset.get_next_batch()
-      feed_dict = construct_feed_dict(lr, True, x_batch, adj_batch, y1_batch, y2_batch, mask_batch) 
-      z = sess.run(model.activations[-3], feed_dict=feed_dict)
+      feed_dict = construct_feed_dict(lr, False, x_batch, adj_batch, y1_batch, y2_batch, mask_batch) 
+      A1_khar, A2_khar, z, lay2, lay1 = sess.run([A1, A2, model.activations[-3], model.activations[-2], model.activations[-1]], feed_dict=feed_dict)
       import IPython; IPython.embed()
 
     loss_arr.append(loss_val)
@@ -481,10 +510,7 @@ def main(unused_argv):
     # Test data
   x_batch, adj_batch, y1_batch, y2_batch, mask_batch = test_dataset.get_next_batch()
   feed_dict = construct_feed_dict(lr, False, x_batch, adj_batch, y1_batch, y2_batch, mask_batch)
-  train_preds_A1, train_preds_A2, loss_value, _, a1, a2= sess.run((A1, A2, label_loss, train_op, acc1, acc2), feed_dict = feed_dict)
-  pr_1 = np.mean(np.abs(y1_batch - np.where(mask_batch, train_preds_A1, 0)))
-  pr_2 = np.mean(np.abs(y2_batch - np.where(mask_batch, train_preds_A2, 0)))
-  print("Loss = {0:.2f}, Train distance to label A1 = {1:.5f}, Train distance to label A2 = {2:.5f}".format(loss_value, pr_1, pr_2))
+  a1, a2 = sess.run((acc1, acc2), feed_dict = feed_dict)
   print("\t acc1 = {0:.4f}, acc2 = {1:.4f}".format(a1, a2))
   import IPython
   IPython.embed()
