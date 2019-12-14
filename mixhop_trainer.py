@@ -321,9 +321,9 @@ def evaluate_model(A1, A2, y1_ph, y2_ph, mask_ph, isVAE=False, z_var=None):
 def save_model(acc_monitor):
     encoded_params = GetEncodedParams()
     output_results_file = os.path.join(
-        FLAGS.results_dir, encoded_params + '.json')
+        FLAGS.results_dir, encoded_params + '__{}.json'.format(FLAGS.dataset_name))
     output_model_file = os.path.join(
-        FLAGS.train_dir, encoded_params + '.pkl')
+        FLAGS.train_dir, encoded_params + '__{}.pkl'.format(FLAGS.dataset_name))
     if os.path.exists(output_results_file) and not FLAGS.retrain:
         print('Exiting early. Results are already computed: %s. Pass flag '
               '--retrain to override' % output_results_file)
@@ -348,15 +348,15 @@ def save_model(acc_monitor):
 def main(unused_argv):
 
   ### LOAD DATASET
-  dataset = mixhop_dataset.ReadDataset(FLAGS.dataset_dir, FLAGS.dataset_name)
+  dataset = mixhop_dataset.ReadDataset(FLAGS.dataset_dir, FLAGS.dataset_name + '_train')
   dataset.show_info()
   # 9630.0 2090.0 7756.0
 
-  eval_dataset = mixhop_dataset.ReadDataset(FLAGS.dataset_dir, 'eval')
+  eval_dataset = mixhop_dataset.ReadDataset(FLAGS.dataset_dir, FLAGS.dataset_name + '_eval')
   eval_dataset.show_info()
 
 
-  test_dataset = mixhop_dataset.ReadDataset(FLAGS.dataset_dir, 'test')
+  test_dataset = mixhop_dataset.ReadDataset(FLAGS.dataset_dir, FLAGS.dataset_name + '_test')
   test_dataset.show_info()
 
 
@@ -512,7 +512,7 @@ def main(unused_argv):
   feed_dict = construct_feed_dict(lr, False, x_batch, adj_batch, y1_batch, y2_batch, mask_batch)
   a1, a2 = sess.run((acc1, acc2), feed_dict = feed_dict)
   print("\t acc1 = {0:.4f}, acc2 = {1:.4f}".format(a1, a2))
-  import IPython
-  IPython.embed()
+  # import IPython
+  # IPython.embed()
 if __name__ == '__main__':
   app.run(main)
