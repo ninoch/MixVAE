@@ -352,11 +352,11 @@ def main(unused_argv):
   dataset.show_info()
   # 9630.0 2090.0 7756.0
 
-  eval_dataset = mixhop_dataset.ReadDataset(FLAGS.dataset_dir, 'sim_eval')
+  eval_dataset = mixhop_dataset.ReadDataset(FLAGS.dataset_dir, 'eval')
   eval_dataset.show_info()
 
 
-  test_dataset = mixhop_dataset.ReadDataset(FLAGS.dataset_dir, 'sim_test')
+  test_dataset = mixhop_dataset.ReadDataset(FLAGS.dataset_dir, 'test')
   test_dataset.show_info()
 
 

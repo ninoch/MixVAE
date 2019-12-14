@@ -203,13 +203,13 @@ class Dataset(object):
     # import IPython
     # IPython.embed()
 
-    # return convert_sparse_matrix_to_sparse_tensor(self.sparse_feature_tensor()), convert_sparse_matrix_to_sparse_tensor(self.adj), np.array(self.featbased.todense()), np.array(self.structural.todense()), self.mask
+    return convert_sparse_matrix_to_sparse_tensor(self.sparse_feature_tensor()), convert_sparse_matrix_to_sparse_tensor(self.adj), np.array(self.featbased.todense()), np.array(self.structural.todense()), self.mask
 
-    khar = self.adj.todense()
-    khar[khar > 0] = 1
-    khar -= np.eye(2000)
+    # khar = self.adj.todense()
+    # khar[khar > 0] = 1
+    # khar -= np.eye(2000)
 
-    return convert_sparse_matrix_to_sparse_tensor(self.sparse_feature_tensor()), convert_sparse_matrix_to_sparse_tensor(self.adj), np.array(self.featbased.todense()), khar, self.mask
+    # return convert_sparse_matrix_to_sparse_tensor(self.sparse_feature_tensor()), convert_sparse_matrix_to_sparse_tensor(self.adj), np.array(self.featbased.todense()), khar, self.mask
 
     # return convert_sparse_matrix_to_sparse_tensor(self.sparse_feature_tensor()), convert_sparse_matrix_to_sparse_tensor(self.adj), khar, khar, self.mask
 

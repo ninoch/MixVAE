@@ -76,14 +76,35 @@ def sample(z_var):
   return tf.concat([a1_sample, a2_sample], axis=1)
 
 
+
+def glorot(shape, name=None):
+    import numpy as np
+    """Glorot & Bengio (AISTATS 2010) init."""
+    init_range = np.sqrt(6.0/(shape[0]+shape[1]))
+    initial = tf.random_uniform(shape, minval=-init_range, maxval=init_range, dtype=tf.float32)
+    return tf.Variable(initial, name=name)
+
+
+W1 = tf.Variable(glorot([1, 9]))
+B1 = tf.Variable(tf.random_normal([1]))
+
+W2 = tf.Variable(glorot([1, 9]))
+B2 = tf.Variable(tf.random_normal([1]))
+
 def decode(z):
   x_t = tf.transpose(z)
   x_t = tf.matmul(z, x_t)
   return x_t
 
 def decoder_layer(z):
-  A_feat = decode(z[:, :z.shape[1]//2])
-  A_struct = decode(z[:, z.shape[1]//2:])
+  # z1 = decode(z[:, :z.shape[1]//2])
+  # z2 = decode(z[:, z.shape[1]//2:])
+
+  z1 = z[:, :z.shape[1]//2]
+  z2 = z[:, z.shape[1]//2:]
+
+  A_feat = tf.matmul(tf.multiply(z1, W1), tf.transpose(z1)) + B1 
+  A_struct = tf.matmul(tf.multiply(z2, W2), tf.transpose(z2)) + B2
 
   combined = tf.concat([A_feat, A_struct], axis=1)
   return combined #TODO: check whether combining them is better
