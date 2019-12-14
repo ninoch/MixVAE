@@ -344,6 +344,25 @@ def save_model(acc_monitor):
     print('Wrote model to ' + output_model_file)
     print('Wrote results to ' + output_results_file)
 
+def create_plot(title, x1, label1, x2, label2, xlabel, ylabel, file_name):
+    plt.title(title)
+    plt.plot(x1, 'b.', label=label1)
+    plt.plot(x2, 'r.', label=label2)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.show()
+    plt.savefig(file_name + str('.png'))
+
+def plot_res(dev_feat_acc, dev_struct_acc, train_feat_acc, train_struct_acc, loss, params):
+    create_plot('Accuracy on developement data', dev_feat_acc, 'feature based adjacency', dev_struct_acc, 'structural adjacency', 'step', 'accuracy', 'results/figs/dev' + str(params))
+    create_plot('Accuracy on steps during data', train_feat_acc, 'feature based adjacency', train_struct_acc, 'structural adjacecy', 'step', 'accuracy', 'results/figs/train' + str(params))
+    plt.title('Loss during training')
+    plt.plot(loss, 'g.')
+    plt.xlabel('step')
+    plt.ylabel('loss')
+    plt.show()
+    plt.savefig('restuls/figs/loss' + str(params) + str('.png'))
+
 
 def main(unused_argv):
 
@@ -453,8 +472,8 @@ def main(unused_argv):
     #TODO: add validation set -> monitor accuracy here
     x_dev, adj_dev, y1_dev, y2_dev, mask_dev = eval_dataset.get_next_batch() #TODO: for nazanin - a developement set is required
     feed_dict = construct_feed_dict(lr, False, x_dev, adj_dev, y1_dev, y2_dev, mask_dev)
-    a1, a2 = sess.run((acc1, acc2), feed_dict=feed_dict)
-    keep_going = accuracy_monitor.mark_accuracy(a1 + a2,  a1 + a2, i)
+    acc_f, acc_s = sess.run((acc1, acc2), feed_dict=feed_dict)
+    keep_going = accuracy_monitor.mark_accuracy(acc_f + acc_s,  acc_f + acc_s, i)
     #
     # print('%i. (loss=%g). Acc: train=%f val=%f test=%f  (@ best val test=%f)' % (
     #     i, loss_value, train_accuracy, validate_accuracy, test_accuracy,
@@ -463,25 +482,31 @@ def main(unused_argv):
     #   return True
     # else:
     #     print('Early stopping')
-    return keep_going, loss_value, a1, a2
+    return keep_going, loss_value, acc_f, acc_s, a1, a2
 
   ### TRAINING LOOP
   lr = FLAGS.learn_rate
   lr_decrement = FLAGS.lr_decrement_ratio_of_initial * FLAGS.learn_rate
-  loss_arr = []
-  acc1_arr = []
-  acc2_arr = []
+  train_step_losses = []
+  dev_feat_acc = []
+  train_feat_acc = []
+  dev_struct_acc = []
+  train_struct_acc = []
+
   for i in range(FLAGS.num_train_steps):
-    keep_going, loss_val, ac1, ac2 = step(dataset, lr=lr)
+    keep_going, loss_val, feat_acc_step, struct_acc_step, train_acc_f, train_acc_s = step(dataset, lr=lr)
     if i == 2000:
       x_batch, adj_batch, y1_batch, y2_batch, mask_batch = dataset.get_next_batch()
       feed_dict = construct_feed_dict(lr, False, x_batch, adj_batch, y1_batch, y2_batch, mask_batch) 
       A1_khar, A2_khar, z, lay2, lay1 = sess.run([A1, A2, model.activations[-3], model.activations[-2], model.activations[-1]], feed_dict=feed_dict)
       import IPython; IPython.embed()
 
-    loss_arr.append(loss_val)
-    acc1_arr.append(ac1)
-    acc2_arr.append(ac2)
+    train_step_losses.append(loss_val)
+    dev_feat_acc.append(feat_acc_step)
+    dev_struct_acc.append(struct_acc_step)
+    train_feat_acc.append(train_acc_f)
+    train_struct_acc.append(train_acc_s)
+
     if not keep_going:
       break
 
@@ -494,15 +519,7 @@ def main(unused_argv):
 
 
   print(accuracy_monitor.best)
-  plt.plot(acc1_arr, 'b-')
-  plt.plot(acc2_arr, 'r.')
-  plt.xlabel('epoch')
-  plt.ylabel('accuracy')
-  plt.show()
-  plt.plot(loss_arr, 'g+')
-  plt.xlabel('epoch')
-  plt.ylabel('loss')
-  plt.show()
+  plot_res(dev_feat_acc, dev_struct_acc, train_feat_acc, train_struct_acc, train_step_losses, FLAGS.dataset_name)
 
   ## Test data
   ops = [v.assign(accuracy_monitor.params_at_best[v.name]) for v in tf.global_variables()]
