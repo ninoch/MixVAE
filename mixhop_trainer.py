@@ -350,18 +350,19 @@ def create_plot(title, x1, label1, x2, label2, xlabel, ylabel, file_name):
     plt.plot(x2, 'r.', label=label2)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
-    plt.show()
+    # plt.show()
     plt.savefig(file_name + str('.png'))
+    plt.clf()
 
 def plot_res(dev_feat_acc, dev_struct_acc, train_feat_acc, train_struct_acc, loss, params):
     create_plot('Accuracy on developement data', dev_feat_acc, 'feature based adjacency', dev_struct_acc, 'structural adjacency', 'step', 'accuracy', 'results/figs/dev' + str(params))
-    create_plot('Accuracy on steps during data', train_feat_acc, 'feature based adjacency', train_struct_acc, 'structural adjacecy', 'step', 'accuracy', 'results/figs/train' + str(params))
+    create_plot('Accuracy on training data', train_feat_acc, 'feature based adjacency', train_struct_acc, 'structural adjacecy', 'step', 'accuracy', 'results/figs/train' + str(params))
     plt.title('Loss during training')
     plt.plot(loss, 'g.')
     plt.xlabel('step')
     plt.ylabel('loss')
-    plt.show()
-    plt.savefig('restuls/figs/loss' + str(params) + str('.png'))
+    # plt.show()
+    plt.savefig('results/figs/loss' + str(params) + str('.png'))
 
 
 def main(unused_argv):
