@@ -300,6 +300,7 @@ def evaluate_model(A1, A2, y1_ph, y2_ph, mask_ph, isVAE=False, z_var=None):
     # alpha = 0.5
 
     label_loss = masked_softmax_cross_entropy(A1, y1_ph, mask_ph, y1_weight)
+    # import IPython; IPython.embed()
     label_loss += masked_softmax_cross_entropy(A2, y2_ph, mask_ph, y2_weight)
 
     # wigh = (2 * tf.math.reduce_sum(mask_ph) - tf.math.reduce_sum(y1_ph) - tf.math.reduce_sum(y2_ph)) / (tf.math.reduce_sum(y1_ph) + tf.math.reduce_sum(y2_ph))
@@ -438,6 +439,7 @@ def main(unused_argv):
   # Now that the graph is frozen
   sess = tf.Session()
   sess.run(tf.global_variables_initializer())
+  sess.run(tf.local_variables_initializer())
   LAST_STEP = collections.Counter()
   accuracy_monitor = AccuracyMonitor(sess, FLAGS.early_stop_steps)
 
@@ -548,6 +550,5 @@ def main(unused_argv):
   a1, a2 = sess.run((acc1, acc2), feed_dict = feed_dict)
   print("\t acc1 = {0:.4f}, acc2 = {1:.4f}".format(a1, a2))
   # import IPython
-  # IPython.embed()
 if __name__ == '__main__':
   app.run(main)

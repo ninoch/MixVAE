@@ -7,12 +7,11 @@ import tensorflow as tf
 
 
 def masked_softmax_cross_entropy(preds, labels, mask, pos_weight):
-    """Softmax cross-entropy loss with masking."""
-    loss = tf.nn.weighted_cross_entropy_with_logits(logits=preds, labels=labels, pos_weight=pos_weight)
-    # mask = tf.cast(mask, dtype=tf.float32)
-    mask /= tf.reduce_mean(mask)
-    loss *= mask
-    return tf.reduce_mean(loss)
+  prs = tf.boolean_mask(preds, mask)
+  ls = tf.boolean_mask(labels, mask)
+  pr_ones = tf.cast(tf.math.greater_equal(prs, 0), tf.int32)
+  loss = tf.metrics.auc(ls, pr_ones)
+  return tf.reduce_sum(loss)
 
 def get_sparse_adj_tensor(num_nodes, num_edges, adj_name): 
   indices_ph = tf.placeholder(tf.int64, [num_edges, 2], name='{}_indices'.format(adj_name))
