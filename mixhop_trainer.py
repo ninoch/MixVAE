@@ -19,6 +19,11 @@ import matplotlib.pyplot as plt
 
 from utils import masked_softmax_cross_entropy
 
+
+seed = 123
+np.random.seed(seed)
+tf.set_random_seed(seed)
+
 # IO Flags.
 flags.DEFINE_string('dataset_dir',
                     # os.path.join(os.environ['HOME'], 'data/planetoid/data'),
@@ -288,9 +293,17 @@ def build_model(sparse_adj, x, is_training, kernel_regularizer, num_x_entries, i
 def evaluate_model(A1, A2, y1_ph, y2_ph, mask_ph, isVAE=False, z_var=None):
     y1_weight = (tf.math.reduce_sum(mask_ph) - tf.math.reduce_sum(y1_ph)) / tf.math.reduce_sum(y1_ph)
     y2_weight = (tf.math.reduce_sum(mask_ph) - tf.math.reduce_sum(y2_ph)) / tf.math.reduce_sum(y2_ph)
+    # alpha = tf.math.reduce_sum(y2_ph) / (tf.math.reduce_sum(y1_ph) + tf.math.reduce_sum(y2_ph))
+
+    # alpha = 0.5
 
     label_loss = masked_softmax_cross_entropy(A1, y1_ph, mask_ph, y1_weight)
     label_loss += masked_softmax_cross_entropy(A2, y2_ph, mask_ph, y2_weight)
+
+    # wigh = (2 * tf.math.reduce_sum(mask_ph) - tf.math.reduce_sum(y1_ph) - tf.math.reduce_sum(y2_ph)) / (tf.math.reduce_sum(y1_ph) + tf.math.reduce_sum(y2_ph))
+
+    # label_loss = masked_softmax_cross_entropy(A1, y1_ph, mask_ph, wigh)
+    # label_loss += masked_softmax_cross_entropy(A2, y2_ph, mask_ph, wigh)
 
     if isVAE:
       a1 = z_var[:, :z_var.shape[1]//2]
@@ -350,6 +363,7 @@ def create_plot(title, x1, label1, x2, label2, xlabel, ylabel, file_name):
     plt.plot(x2, 'r.', label=label2)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
+    plt.legend(loc='best')
     # plt.show()
     plt.savefig(file_name + str('.png'))
     plt.clf()
