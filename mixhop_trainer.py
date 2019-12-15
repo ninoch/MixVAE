@@ -264,8 +264,10 @@ def build_model(sparse_adj, x, is_training, kernel_regularizer, num_x_entries, i
                             layer_id=j, pass_kernel_regularizer=True)
 
             if j != len(layer_dims) - 1:
-                model.add_layer('tf.contrib.layers', 'batch_norm')
-                model.add_layer('tf.nn', FLAGS.nonlinearity)
+              model.add_layer('tf.contrib.layers', 'batch_norm')
+              model.add_layer('tf.nn', FLAGS.nonlinearity)
+            elif isVAE:
+              model.add_layer('tf.contrib.layers', 'batch_norm')
 
         model.add_layer('mixhop_model', 'reorder', create_dim_inds(
             power_parser.divide_capacity(len(layer_dims) - 1, layer_dims[-1])))  # TODO: Verify the capacity
@@ -408,7 +410,7 @@ def main(unused_argv):
 
 
   ### BUILD MODEL
-  isVAE = False
+  isVAE = True
   if isVAE:
     A1, A2, model, z_var = build_model(sparse_adj_ph, x_ph, is_training, kernel_regularizer, num_x_entries, True)
   else:
@@ -510,10 +512,11 @@ def main(unused_argv):
 
   for i in range(FLAGS.num_train_steps):
     keep_going, loss_val, feat_acc_step, struct_acc_step, train_acc_f, train_acc_s = step(dataset, lr=lr)
-    if i == 2000:
+    if i == 1000:
       x_batch, adj_batch, y1_batch, y2_batch, mask_batch = dataset.get_next_batch()
       feed_dict = construct_feed_dict(lr, False, x_batch, adj_batch, y1_batch, y2_batch, mask_batch) 
-      A1_khar, A2_khar, z, lay2, lay1 = sess.run([A1, A2, model.activations[-3], model.activations[-2], model.activations[-1]], feed_dict=feed_dict)
+      # A1_khar, A2_khar, z, lay2, lay1 = sess.run([A1, A2, model.activations[-3], model.activations[-2], model.activations[-1]], feed_dict=feed_dict)
+      A1_khar, A2_khar, z, lay4, lay3, lay2 = sess.run([A1, A2, model.activations[-5], model.activations[-4], model.activations[-3], model.activations[-2]], feed_dict=feed_dict)
       import IPython; IPython.embed()
 
     train_step_losses.append(loss_val)
